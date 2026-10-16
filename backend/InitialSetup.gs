@@ -11,7 +11,7 @@
  */
 
 function runInitialSetup() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   
   // 1. สร้างหรือเตรียม Sheet: Users
   let usersSheet = ss.getSheetByName("Users");

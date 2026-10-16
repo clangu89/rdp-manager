@@ -8,7 +8,7 @@
 const CONFIG = {
   // นำ URL ที่ได้จากการ Deploy Google Apps Script Web App มาวางที่นี่
   // ตัวอย่าง: "https://script.google.com/macros/s/AKfycbx.../exec"
-  DEFAULT_GAS_API_URL: "",
+  DEFAULT_GAS_API_URL: "https://script.google.com/macros/s/AKfycbwCfRzhKre-7Bv41SPhHuGQw2nK0_ResJ4r-_QUsNicl3AlakHyJmNGlvRIneZOVCzn/exec",
 
   // ฟังก์ชันดึง URL ที่ใช้งานจริง (ดึงจาก LocalStorage ก่อน หากผู้ใช้ตั้งค่าผ่านหน้าเว็บ)
   getGasApiUrl: function() {

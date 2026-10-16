@@ -7,6 +7,18 @@
  */
 
 const SECRET_SALT = "RDP_MGR_SECURE_SALT_2026_@v1";
+const SPREADSHEET_ID = "1r-mSATonJBdsFUqGzPlOi6oDzp87XbeI7YFd3jP7VCk";
+
+function getSpreadsheet() {
+  if (SPREADSHEET_ID && SPREADSHEET_ID !== "") {
+    try {
+      return SpreadsheetApp.openById(SPREADSHEET_ID);
+    } catch (e) {
+      Logger.log("openById failed, fallback to getActive: " + e.message);
+    }
+  }
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
 
 // --------------------------------------------------------------------
 // Web App Entry Points (doGet & doPost)
@@ -37,6 +49,10 @@ function handleRequest(params) {
     switch (action) {
       case "ping":
         return createJsonResponse({ success: true, message: "RDP Manager API is online", timestamp: new Date() });
+
+      case "init":
+        runInitialSetup();
+        return createJsonResponse({ success: true, message: "Initial setup completed successfully" });
 
       case "login":
         return createJsonResponse(handleLogin(params.username, params.password));
@@ -85,7 +101,7 @@ function handleLogin(username, password) {
     return { success: false, message: "กรุณาระบุ Username และ Password" };
   }
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const usersSheet = ss.getSheetByName("Users");
   if (!usersSheet) return { success: false, message: "ไม่พบตาราง Users ในระบบ กรุณาเรียก runInitialSetup ก่อน" };
 
@@ -173,7 +189,7 @@ function handleGetSites(token) {
   const session = verifySessionToken(token);
   if (!session) return { success: false, message: "Session หมดอายุหรือสิทธิ์ไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่" };
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const sitesSheet = ss.getSheetByName("Sites");
   const permSheet = ss.getSheetByName("Permissions");
   if (!sitesSheet) return { success: false, message: "ไม่พบตาราง Sites" };
@@ -242,7 +258,7 @@ function handleSaveSite(token, siteData) {
     return { success: false, message: "กรุณาระบุข้อมูลจำเป็น: ชื่อไซต์, IP Address, และ Username" };
   }
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const sitesSheet = ss.getSheetByName("Sites");
   const data = sitesSheet.getDataRange().getValues();
   const now = new Date();
@@ -308,7 +324,7 @@ function handleDeleteSite(token, siteId) {
     return { success: false, message: "ไม่มีสิทธิ์ดำเนินการ ต้องเป็น Admin เท่านั้น" };
   }
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const sitesSheet = ss.getSheetByName("Sites");
   const data = sitesSheet.getDataRange().getValues();
 
@@ -346,7 +362,7 @@ function handleGetUsers(token) {
     return { success: false, message: "ไม่มีสิทธิ์เข้าถึงข้อมูลผู้ใช้งาน (Admin Only)" };
   }
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const usersSheet = ss.getSheetByName("Users");
   const permSheet = ss.getSheetByName("Permissions");
   const sitesSheet = ss.getSheetByName("Sites");
@@ -411,7 +427,7 @@ function handleSaveUser(token, userData) {
     return { success: false, message: "กรุณาระบุ Username" };
   }
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const usersSheet = ss.getSheetByName("Users");
   const permSheet = ss.getSheetByName("Permissions");
   const data = usersSheet.getDataRange().getValues();
@@ -490,7 +506,7 @@ function handleDeleteUser(token, userId) {
     return { success: false, message: "ไม่สามารถลบบัญชีของตนเองที่กำลังล็อกอินอยู่ได้" };
   }
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const usersSheet = ss.getSheetByName("Users");
   const data = usersSheet.getDataRange().getValues();
 
