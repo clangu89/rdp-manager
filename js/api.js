@@ -147,7 +147,7 @@ const API = {
               sessionStorage.setItem("demo_pin_user", payload.username);
               setTimeout(() => {
                 if (typeof Toast !== "undefined") {
-                  Toast.show("🤖 [Demo Telegram] รหัส PIN ของคุณคือ: 123456", "info");
+                  Toast.show("🤖 [Demo Telegram] 123456 คือรหัส PIN เข้าสู่ระบบ Remote Manager", "info");
                 }
               }, 500);
               resolve({

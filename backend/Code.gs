@@ -270,9 +270,8 @@ function handleRequestLoginPin(username) {
 
   // ส่งข้อความผ่าน Telegram
   const msgText = 
-    "🔐 <b>รหัส PIN เข้าสู่ระบบ Remote Manager</b>\n\n" +
-    "เรียนคุณ <b>" + (targetUser.displayName || targetUser.username) + "</b>\n" +
-    "รหัส PIN 6 หลักของคุณคือ: <code>" + pin + "</code>\n\n" +
+    "<code>" + pin + "</code> คือรหัส PIN เข้าสู่ระบบ Remote Manager\n\n" +
+    "👤 บัญชีผู้ใช้: <b>" + (targetUser.displayName || targetUser.username) + "</b> (" + targetUser.username + ")\n" +
     "⏳ <i>รหัสนี้มีอายุ 5 นาที และใช้ได้ครั้งเดียวเท่านั้น</i>\n" +
     "⚠️ หากคุณไม่ได้เป็นผู้ทำรายการ โปรดติดต่อผู้ดูแลระบบทันที";
 
