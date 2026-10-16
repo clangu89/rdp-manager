@@ -277,3 +277,21 @@ function hashPassword(password) {
   }
   return txtHash;
 }
+
+/**
+ * ฟังก์ชันสำหรับให้เจ้าของบัญชี Google กดยอมรับสิทธิ์ (OAuth Authorization)
+ * เพื่อปลดล็อกสิทธิ์ UrlFetchApp (การยิง Telegram Bot) และ Spreadsheets
+ */
+function testAuthorization() {
+  Logger.log("1. ตรวจสอบการเข้าถึง Google Spreadsheet...");
+  const ss = getSpreadsheet();
+  Logger.log("   -> เข้าถึงสเปรดชีตสำเร็จ: " + ss.getName());
+  
+  Logger.log("2. ตรวจสอบสิทธิ์ UrlFetchApp (สำหรับส่งรหัส Telegram Bot)...");
+  const res = UrlFetchApp.fetch("https://api.telegram.org", { muteHttpExceptions: true });
+  Logger.log("   -> เชื่อมต่อภายนอกสำเร็จ: HTTP " + res.getResponseCode());
+  
+  Logger.log("========================================================");
+  Logger.log("🎉 การให้สิทธิ์ (Authorization) ครบถ้วนสมบูรณ์ 100%!");
+  Logger.log("========================================================");
+}
