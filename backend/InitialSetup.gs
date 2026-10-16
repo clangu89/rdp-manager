@@ -142,7 +142,28 @@ function runInitialSetup() {
     ]);
   }
 
-  // 4. สร้างหรือเตรียม Sheet: AuditLogs
+  // 4. สร้างหรือเตรียม Sheet: Groups
+  let groupsSheet = ss.getSheetByName("Groups");
+  if (!groupsSheet) {
+    groupsSheet = ss.insertSheet("Groups");
+  }
+  if (groupsSheet.getLastRow() === 0) {
+    groupsSheet.appendRow([
+      "group_id",
+      "group_name",
+      "description",
+      "created_at"
+    ]);
+    formatHeaderRow(groupsSheet);
+
+    const now = new Date();
+    groupsSheet.appendRow(["GRP-001", "Headquarters", "สำนักงานใหญ่ / ศูนย์กลางระบบ", now]);
+    groupsSheet.appendRow(["GRP-002", "Branch", "สาขาต่างจังหวัด / หน่วยงานภูมิภาค", now]);
+    groupsSheet.appendRow(["GRP-003", "Warehouse", "คลังสินค้าและศูนย์กระจายสินค้า", now]);
+    groupsSheet.appendRow(["GRP-004", "General", "หมวดหมู่ทั่วไป", now]);
+  }
+
+  // 5. สร้างหรือเตรียม Sheet: AuditLogs
   let logsSheet = ss.getSheetByName("AuditLogs");
   if (!logsSheet) {
     logsSheet = ss.insertSheet("AuditLogs");

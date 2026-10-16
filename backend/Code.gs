@@ -78,6 +78,15 @@ function handleRequest(params) {
       case "logRemoteAction":
         return createJsonResponse(handleLogRemoteAction(params.token, params.siteId));
 
+      case "getGroups":
+        return createJsonResponse(handleGetGroups(params.token));
+
+      case "saveGroup":
+        return createJsonResponse(handleSaveGroup(params.token, params.groupData));
+
+      case "deleteGroup":
+        return createJsonResponse(handleDeleteGroup(params.token, params.groupId));
+
       default:
         return createJsonResponse({ success: false, message: "Unknown action: " + action });
     }
@@ -527,8 +536,188 @@ function handleDeleteUser(token, userId) {
 }
 
 // --------------------------------------------------------------------
+// Group Management API (Admin Only for Write, All for Read)
+// --------------------------------------------------------------------
+
+function handleGetGroups(token) {
+  const session = verifySessionToken(token);
+  if (!session) return { success: false, message: "Session หมดอายุหรือสิทธิ์ไม่ถูกต้อง" };
+
+  const ss = getSpreadsheet();
+  let groupsSheet = ss.getSheetByName("Groups");
+  const sitesSheet = ss.getSheetByName("Sites");
+
+  if (!groupsSheet) {
+    groupsSheet = ss.insertSheet("Groups");
+    groupsSheet.appendRow(["group_id", "group_name", "description", "created_at"]);
+    formatHeaderRow(groupsSheet);
+    const now = new Date();
+    groupsSheet.appendRow(["GRP-001", "Headquarters", "สำนักงานใหญ่ / ศูนย์กลางระบบ", now]);
+    groupsSheet.appendRow(["GRP-002", "Branch", "สาขาต่างจังหวัด / หน่วยงานภูมิภาค", now]);
+    groupsSheet.appendRow(["GRP-003", "Warehouse", "คลังสินค้าและศูนย์กระจายสินค้า", now]);
+    groupsSheet.appendRow(["GRP-004", "General", "หมวดหมู่ทั่วไป", now]);
+  }
+
+  // นับจำนวนไซต์งานในแต่ละกลุ่ม
+  const siteCounts = {};
+  if (sitesSheet) {
+    const siteRows = sitesSheet.getDataRange().getValues();
+    for (let i = 1; i < siteRows.length; i++) {
+      const gName = String(siteRows[i][6] || "General").trim();
+      siteCounts[gName.toLowerCase()] = (siteCounts[gName.toLowerCase()] || 0) + 1;
+    }
+  }
+
+  const groupRows = groupsSheet.getDataRange().getValues();
+  const groups = [];
+
+  for (let i = 1; i < groupRows.length; i++) {
+    const row = groupRows[i];
+    const gId = String(row[0]).trim();
+    if (!gId) continue;
+    const gName = String(row[1]).trim();
+
+    groups.push({
+      group_id: gId,
+      group_name: gName,
+      description: row[2] || "",
+      created_at: row[3],
+      site_count: siteCounts[gName.toLowerCase()] || 0
+    });
+  }
+
+  return { success: true, groups: groups };
+}
+
+function handleSaveGroup(token, groupData) {
+  const session = verifySessionToken(token);
+  if (!session || session.role !== "admin") {
+    return { success: false, message: "ไม่มีสิทธิ์ดำเนินการ ต้องเป็น Admin เท่านั้น" };
+  }
+
+  if (!groupData || !groupData.group_name || groupData.group_name.trim() === "") {
+    return { success: false, message: "กรุณาระบุชื่อกลุ่ม / หมวดหมู่" };
+  }
+
+  const newGroupName = groupData.group_name.trim();
+  const ss = getSpreadsheet();
+  let groupsSheet = ss.getSheetByName("Groups");
+  if (!groupsSheet) {
+    handleGetGroups(token);
+    groupsSheet = ss.getSheetByName("Groups");
+  }
+
+  const data = groupsSheet.getDataRange().getValues();
+  const now = new Date();
+  let targetRowIndex = -1;
+  const isEdit = Boolean(groupData.group_id);
+  let oldGroupName = "";
+
+  for (let i = 1; i < data.length; i++) {
+    const curId = String(data[i][0]).trim();
+    const curName = String(data[i][1]).trim();
+
+    if (isEdit && curId === String(groupData.group_id).trim()) {
+      targetRowIndex = i + 1;
+      oldGroupName = curName;
+    } else if (curName.toLowerCase() === newGroupName.toLowerCase()) {
+      return { success: false, message: "มีชื่อกลุ่ม \"" + newGroupName + "\" อยู่ในระบบแล้ว" };
+    }
+  }
+
+  if (targetRowIndex > 0) {
+    // แก้ไขกลุ่มเดิม
+    groupsSheet.getRange(targetRowIndex, 2, 1, 2).setValues([[
+      newGroupName,
+      groupData.description || ""
+    ]]);
+
+    // ถ้าชื่อกลุ่มเปลี่ยน ให้อัปเดตชื่อกลุ่มในตาราง Sites ด้วย
+    if (oldGroupName && oldGroupName !== newGroupName) {
+      const sitesSheet = ss.getSheetByName("Sites");
+      if (sitesSheet) {
+        const siteRows = sitesSheet.getDataRange().getValues();
+        for (let i = 1; i < siteRows.length; i++) {
+          if (String(siteRows[i][6] || "").trim().toLowerCase() === oldGroupName.toLowerCase()) {
+            sitesSheet.getRange(i + 1, 7).setValue(newGroupName);
+          }
+        }
+      }
+    }
+
+    writeAuditLog(session.userId, "GROUP_UPDATE", groupData.group_id, "แก้ไขกลุ่ม: " + newGroupName);
+    return { success: true, message: "บันทึกการแก้ไขกลุ่มเรียบร้อย" };
+  } else {
+    // เพิ่มกลุ่มใหม่
+    const newGroupId = "GRP-" + Utilities.formatDate(now, "Asia/Bangkok", "yyyyMMdd-HHmmss");
+    groupsSheet.appendRow([
+      newGroupId,
+      newGroupName,
+      groupData.description || "",
+      now
+    ]);
+
+    writeAuditLog(session.userId, "GROUP_CREATE", newGroupId, "สร้างกลุ่มใหม่: " + newGroupName);
+    return { success: true, message: "สร้างกลุ่มใหม่เรียบร้อย", group_id: newGroupId };
+  }
+}
+
+function handleDeleteGroup(token, groupId) {
+  const session = verifySessionToken(token);
+  if (!session || session.role !== "admin") {
+    return { success: false, message: "ไม่มีสิทธิ์ดำเนินการ ต้องเป็น Admin เท่านั้น" };
+  }
+
+  const ss = getSpreadsheet();
+  const groupsSheet = ss.getSheetByName("Groups");
+  const sitesSheet = ss.getSheetByName("Sites");
+  if (!groupsSheet) return { success: false, message: "ไม่พบตาราง Groups" };
+
+  const groupRows = groupsSheet.getDataRange().getValues();
+  let targetRowIndex = -1;
+  let groupNameToDelete = "";
+
+  for (let i = 1; i < groupRows.length; i++) {
+    if (String(groupRows[i][0]).trim() === String(groupId).trim()) {
+      targetRowIndex = i + 1;
+      groupNameToDelete = String(groupRows[i][1]).trim();
+      break;
+    }
+  }
+
+  if (targetRowIndex < 0) {
+    return { success: false, message: "ไม่พบรหัสกลุ่มที่ต้องการลบ" };
+  }
+
+  // ตัวเลือก B (Enforced): ตรวจสอบว่ามีไซต์งานผูกอยู่กับกลุ่มนี้หรือไม่
+  if (sitesSheet) {
+    const siteRows = sitesSheet.getDataRange().getValues();
+    let siteCount = 0;
+    for (let i = 1; i < siteRows.length; i++) {
+      const siteGroup = String(siteRows[i][6] || "").trim();
+      if (siteGroup.toLowerCase() === groupNameToDelete.toLowerCase()) {
+        siteCount++;
+      }
+    }
+
+    if (siteCount > 0) {
+      return {
+        success: false,
+        message: "ไม่สามารถลบกลุ่ม \"" + groupNameToDelete + "\" ได้ เนื่องจากยังมีไซต์งานอยู่ในกลุ่มนี้จำนวน " + siteCount + " ไซต์ กรุณาย้ายหรือเปลี่ยนกลุ่มของไซต์งานก่อนลบ"
+      };
+    }
+  }
+
+  // ลบแถวกลุ่ม
+  groupsSheet.deleteRow(targetRowIndex);
+  writeAuditLog(session.userId, "GROUP_DELETE", groupId, "ลบกลุ่ม: " + groupNameToDelete);
+  return { success: true, message: "ลบกลุ่มสำเร็จ" };
+}
+
+// --------------------------------------------------------------------
 // Helper Functions
 // --------------------------------------------------------------------
+
 
 function getUserAllowedSiteIds(userId, role, permSheet) {
   if (role === "admin") return ["*"];

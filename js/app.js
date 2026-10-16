@@ -7,15 +7,18 @@
 // Global State
 const State = {
   sites: [],
+  groups: [],
   users: [],
   allSitesForPerm: [],
   searchTerm: "",
   selectedGroup: "ALL",
   viewMode: localStorage.getItem("rdp_view_mode") || "grid",
   editingSiteId: null,
+  editingGroupId: null,
   editingUserId: null,
   isLoading: false
 };
+
 
 // Toast Notifications System
 const Toast = {
@@ -128,7 +131,45 @@ function showDashboardView() {
     banner.classList.add("hidden");
   }
 
+  loadGroups();
   loadSites();
+}
+
+async function loadGroups() {
+  try {
+    const res = await API.call("getGroups", { token: Auth.getToken() });
+    if (res.success) {
+      State.groups = res.groups || [];
+      populateSiteGroupDropdown();
+      updateGroupFilters();
+      const groupsModal = document.getElementById("groups-modal");
+      if (groupsModal && !groupsModal.classList.contains("hidden")) {
+        renderGroupsTable();
+      }
+    }
+  } catch (err) {
+    console.error("loadGroups error:", err);
+  }
+}
+
+function populateSiteGroupDropdown(selectedGroupName = "") {
+  const select = document.getElementById("form-site-group");
+  if (!select) return;
+
+  if (State.groups.length === 0) {
+    select.innerHTML = '<option value="">-- ไม่พบกลุ่มงาน (กรุณาเพิ่มกลุ่มก่อน) --</option>';
+    return;
+  }
+
+  select.innerHTML = State.groups.map(g => `
+    <option value="${g.group_name}" ${g.group_name.toLowerCase() === selectedGroupName.toLowerCase() ? 'selected' : ''}>
+      ${g.group_name}
+    </option>
+  `).join("");
+
+  if (selectedGroupName) {
+    select.value = selectedGroupName;
+  }
 }
 
 async function loadSites() {
@@ -153,22 +194,26 @@ async function loadSites() {
 }
 
 function updateGroupFilters() {
-  const groups = new Set();
+  const select = document.getElementById("group-filter-select");
+  if (!select) return;
+  const currentVal = State.selectedGroup;
+
+  select.innerHTML = `<option value="ALL">ทุกหมวดหมู่ (${State.sites.length})</option>`;
+
+  // ดึงกลุ่มทั้งหมดจาก State.groups รวมกับไซต์งาน
+  const groupNames = new Set(State.groups.map(g => g.group_name));
   State.sites.forEach(s => {
-    if (s.group_name) groups.add(s.group_name);
+    if (s.group_name) groupNames.add(s.group_name);
   });
 
-  const select = document.getElementById("group-filter-select");
-  const currentVal = State.selectedGroup;
-  select.innerHTML = `<option value="ALL">ทุกหมวดหมู่ (${State.sites.length})</option>`;
-  
-  groups.forEach(g => {
-    const count = State.sites.filter(s => s.group_name === g).length;
-    select.innerHTML += `<option value="${g}">${g} (${count})</option>`;
+  groupNames.forEach(gName => {
+    const count = State.sites.filter(s => (s.group_name || "").toLowerCase() === gName.toLowerCase()).length;
+    select.innerHTML += `<option value="${gName}">${gName} (${count})</option>`;
   });
 
   select.value = currentVal;
 }
+
 
 function renderSites() {
   const container = document.getElementById("sites-container");
@@ -363,7 +408,7 @@ function openSiteModal(siteId = null) {
     const site = State.sites.find(s => s.site_id === siteId);
     if (site) {
       document.getElementById("form-site-name").value = site.site_name || "";
-      document.getElementById("form-site-group").value = site.group_name || "";
+      populateSiteGroupDropdown(site.group_name || "");
       document.getElementById("form-site-ip").value = site.ip_address || "";
       document.getElementById("form-site-port").value = site.port || 3389;
       document.getElementById("form-site-user").value = site.username || "";
@@ -372,6 +417,7 @@ function openSiteModal(siteId = null) {
     }
   } else {
     titleEl.textContent = "เพิ่มไซต์งานใหม่";
+    populateSiteGroupDropdown(State.groups.length > 0 ? State.groups[0].group_name : "");
     document.getElementById("form-site-port").value = "3389";
   }
 
@@ -391,8 +437,8 @@ async function handleSiteSubmit(e) {
     description: document.getElementById("form-site-desc").value.trim()
   };
 
-  if (!siteData.site_name || !siteData.ip_address || !siteData.username) {
-    Toast.show("กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน", "warning");
+  if (!siteData.site_name || !siteData.ip_address || !siteData.username || !siteData.group_name) {
+    Toast.show("กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน รวมทั้งเลือกกลุ่มงาน", "warning");
     return;
   }
 
@@ -628,10 +674,154 @@ async function confirmDeleteUser(userId, username) {
 }
 
 // --------------------------------------------------------------------
+// Group Management Modals & Handlers (Admin Only)
+// --------------------------------------------------------------------
+
+function openGroupsModal() {
+  if (!Auth.isAdmin()) {
+    Toast.show("สิทธิ์ไม่เพียงพอ (เฉพาะ Admin เท่านั้น)", "warning");
+    return;
+  }
+  resetGroupForm();
+  renderGroupsTable();
+  showModal("groups-modal");
+}
+
+function renderGroupsTable() {
+  const container = document.getElementById("groups-table-body");
+  if (!container) return;
+
+  if (State.groups.length === 0) {
+    container.innerHTML = `
+      <tr>
+        <td colspan="4" class="px-4 py-8 text-center text-slate-400">
+          ยังไม่มีกลุ่มงานในระบบ กรุณาเพิ่มกลุ่มใหม่
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  container.innerHTML = State.groups.map(g => {
+    // นับจำนวนไซต์งานในกลุ่มนี้
+    const siteCount = State.sites.filter(s => 
+      (s.group_name || "").toLowerCase() === g.group_name.toLowerCase()
+    ).length;
+
+    return `
+      <tr class="hover:bg-slate-50 transition-colors">
+        <td class="px-4 py-3 font-semibold text-slate-800">
+          ${g.group_name}
+        </td>
+        <td class="px-4 py-3 text-slate-500 text-xs">
+          ${g.description || '-'}
+        </td>
+        <td class="px-4 py-3 text-center">
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${siteCount > 0 ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-500'}">
+            ${siteCount} ไซต์
+          </span>
+        </td>
+        <td class="px-4 py-3 text-right space-x-1 whitespace-nowrap">
+          <button onclick="editGroup('${g.group_id}')" class="p-1 text-slate-400 hover:text-blue-600 rounded" title="แก้ไข">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+          </button>
+          <button onclick="confirmDeleteGroup('${g.group_id}', '${g.group_name}', ${siteCount})" class="p-1 text-slate-400 hover:text-rose-600 rounded" title="ลบ">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function resetGroupForm() {
+  State.editingGroupId = null;
+  const form = document.getElementById("group-form");
+  if (form) form.reset();
+  const title = document.getElementById("group-form-title");
+  if (title) title.textContent = "➕ เพิ่มกลุ่มใหม่";
+}
+
+function editGroup(groupId) {
+  const g = State.groups.find(x => x.group_id === groupId);
+  if (!g) return;
+
+  State.editingGroupId = groupId;
+  document.getElementById("group-form-title").textContent = `✏️ แก้ไขกลุ่ม: ${g.group_name}`;
+  document.getElementById("group-form-name").value = g.group_name;
+  document.getElementById("group-form-desc").value = g.description || "";
+}
+
+async function handleGroupSubmit(e) {
+  e.preventDefault();
+  const groupData = {
+    group_id: State.editingGroupId,
+    group_name: document.getElementById("group-form-name").value.trim(),
+    description: document.getElementById("group-form-desc").value.trim()
+  };
+
+  if (!groupData.group_name) {
+    Toast.show("กรุณาระบุชื่อกลุ่มงาน", "warning");
+    return;
+  }
+
+  showLoading(true);
+  try {
+    const res = await API.call("saveGroup", {
+      token: Auth.getToken(),
+      groupData: groupData
+    });
+
+    if (res.success) {
+      Toast.show(res.message || "บันทึกข้อมูลกลุ่มเรียบร้อย", "success");
+      resetGroupForm();
+      await loadGroups();
+      await loadSites();
+    } else {
+      Toast.show(res.message || "เกิดข้อผิดพลาดในการบันทึก", "error");
+    }
+  } catch (err) {
+    Toast.show("เกิดข้อผิดพลาดในการส่งข้อมูล", "error");
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function confirmDeleteGroup(groupId, groupName, siteCount) {
+  // กฎตัวเลือก B (Enforced): ห้ามลบหากมีไซต์งานอยู่ในกลุ่ม
+  if (siteCount > 0) {
+    alert(`⚠️ ไม่สามารถลบกลุ่ม "${groupName}" ได้\n\nเนื่องจากยังมีไซต์งานผูกอยู่กับกลุ่มนี้จำนวน ${siteCount} ไซต์ กรุณาย้ายหรือเปลี่ยนกลุ่มของไซต์งานก่อนลบ`);
+    return;
+  }
+
+  if (confirm(`คุณต้องการลบกลุ่ม "${groupName}" ใช่หรือไม่?`)) {
+    showLoading(true);
+    try {
+      const res = await API.call("deleteGroup", {
+        token: Auth.getToken(),
+        groupId: groupId
+      });
+
+      if (res.success) {
+        Toast.show(res.message || "ลบกลุ่มสำเร็จ", "success");
+        await loadGroups();
+      } else {
+        Toast.show(res.message || "เกิดข้อผิดพลาดในการลบ", "error");
+      }
+    } catch (err) {
+      Toast.show("เกิดข้อผิดพลาดในการส่งข้อมูล", "error");
+    } finally {
+      showLoading(false);
+    }
+  }
+}
+
+// --------------------------------------------------------------------
 // Settings & Protocol Setup Modals
 // --------------------------------------------------------------------
 
 function openSettingsModal() {
+
   document.getElementById("setting-gas-url").value = CONFIG.getGasApiUrl();
   document.getElementById("setting-conn-mode").value = CONFIG.getConnectionMode();
   showModal("settings-modal");
@@ -745,6 +935,7 @@ function setupEventListeners() {
   // Forms
   document.getElementById("site-form")?.addEventListener("submit", handleSiteSubmit);
   document.getElementById("user-form")?.addEventListener("submit", handleUserSubmit);
+  document.getElementById("group-form")?.addEventListener("submit", handleGroupSubmit);
   document.getElementById("settings-form")?.addEventListener("submit", handleSaveSettings);
 }
 

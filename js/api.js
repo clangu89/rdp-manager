@@ -211,6 +211,98 @@ const API = {
             });
             break;
 
+          case "getGroups":
+            let demoGroups = JSON.parse(localStorage.getItem("demo_groups") || "null");
+            if (!demoGroups) {
+              demoGroups = [
+                { group_id: "GRP-001", group_name: "Headquarters", description: "สำนักงานใหญ่ / ศูนย์กลางระบบ", created_at: new Date().toISOString() },
+                { group_id: "GRP-002", group_name: "Branch", description: "สาขาต่างจังหวัด / หน่วยงานภูมิภาค", created_at: new Date().toISOString() },
+                { group_id: "GRP-003", group_name: "Warehouse", description: "คลังสินค้าและศูนย์กระจายสินค้า", created_at: new Date().toISOString() },
+                { group_id: "GRP-004", group_name: "General", description: "หมวดหมู่ทั่วไป", created_at: new Date().toISOString() }
+              ];
+              localStorage.setItem("demo_groups", JSON.stringify(demoGroups));
+            }
+            const counts = {};
+            demoSites.forEach(s => {
+              const gn = (s.group_name || "General").toLowerCase();
+              counts[gn] = (counts[gn] || 0) + 1;
+            });
+            resolve({
+              success: true,
+              groups: demoGroups.map(g => ({
+                ...g,
+                site_count: counts[g.group_name.toLowerCase()] || 0
+              }))
+            });
+            break;
+
+          case "saveGroup":
+            let curGroups = JSON.parse(localStorage.getItem("demo_groups") || "[]");
+            const gData = payload.groupData;
+            const newGName = gData.group_name.trim();
+
+            const isDuplicate = curGroups.some(g => 
+              g.group_name.toLowerCase() === newGName.toLowerCase() && 
+              g.group_id !== gData.group_id
+            );
+            if (isDuplicate) {
+              resolve({ success: false, message: `มีชื่อกลุ่ม "${newGName}" อยู่ในระบบแล้ว` });
+              return;
+            }
+
+            if (gData.group_id) {
+              const gIdx = curGroups.findIndex(g => g.group_id === gData.group_id);
+              if (gIdx >= 0) {
+                const oldName = curGroups[gIdx].group_name;
+                curGroups[gIdx].group_name = newGName;
+                curGroups[gIdx].description = gData.description || "";
+                
+                // Update sites with old group name
+                demoSites.forEach(s => {
+                  if (s.group_name.toLowerCase() === oldName.toLowerCase()) {
+                    s.group_name = newGName;
+                  }
+                });
+                localStorage.setItem("demo_sites", JSON.stringify(demoSites));
+              }
+            } else {
+              curGroups.push({
+                group_id: "GRP-" + Date.now(),
+                group_name: newGName,
+                description: gData.description || "",
+                created_at: new Date().toISOString()
+              });
+            }
+            localStorage.setItem("demo_groups", JSON.stringify(curGroups));
+            resolve({ success: true, message: "บันทึกข้อมูลกลุ่มสำเร็จ (Demo)" });
+            break;
+
+          case "deleteGroup":
+            let groupsToDel = JSON.parse(localStorage.getItem("demo_groups") || "[]");
+            const targetG = groupsToDel.find(g => g.group_id === payload.groupId);
+            if (!targetG) {
+              resolve({ success: false, message: "ไม่พบกลุ่มที่ต้องการลบ" });
+              return;
+            }
+
+            // Option B rule: Check if sites exist in this group
+            const siteCountInGroup = demoSites.filter(s => 
+              (s.group_name || "").toLowerCase() === targetG.group_name.toLowerCase()
+            ).length;
+
+            if (siteCountInGroup > 0) {
+              resolve({ 
+                success: false, 
+                message: `ไม่สามารถลบกลุ่ม "${targetG.group_name}" ได้ เนื่องจากยังมีไซต์งานอยู่ในกลุ่มนี้จำนวน ${siteCountInGroup} ไซต์ กรุณาย้ายไซต์งานไปกลุ่มอื่นก่อนลบ` 
+              });
+              return;
+            }
+
+            groupsToDel = groupsToDel.filter(g => g.group_id !== payload.groupId);
+            localStorage.setItem("demo_groups", JSON.stringify(groupsToDel));
+            resolve({ success: true, message: "ลบกลุ่มสำเร็จ (Demo)" });
+            break;
+
           case "saveUser":
           case "deleteUser":
           case "logRemoteAction":
@@ -222,5 +314,6 @@ const API = {
         }
       }, 300);
     });
+
   }
 };
