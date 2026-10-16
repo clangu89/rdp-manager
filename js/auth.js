@@ -24,6 +24,28 @@ const Auth = {
     }
   },
 
+  async requestPin(username) {
+    const res = await API.call("requestLoginPin", {
+      username: username
+    });
+    return res;
+  },
+
+  async loginWithPin(username, pin) {
+    const res = await API.call("loginWithPin", {
+      username: username,
+      pin: pin
+    });
+
+    if (res.success && res.token) {
+      localStorage.setItem(this.TOKEN_KEY, res.token);
+      localStorage.setItem(this.USER_KEY, JSON.stringify(res.user));
+      return { success: true, user: res.user };
+    } else {
+      return { success: false, message: res.message || "เข้าสู่ระบบไม่สำเร็จ" };
+    }
+  },
+
   logout() {
     localStorage.removeItem(this.TOKEN_KEY);
     localStorage.removeItem(this.USER_KEY);

@@ -16,7 +16,11 @@ const State = {
   editingSiteId: null,
   editingGroupId: null,
   editingUserId: null,
-  isLoading: false
+  isLoading: false,
+  // PIN Login State
+  pinUsername: "",
+  pinExpireInterval: null,
+  pinCooldownInterval: null
 };
 
 
@@ -100,6 +104,75 @@ function initApp() {
 function showLoginView() {
   document.getElementById("login-view").classList.remove("hidden");
   document.getElementById("dashboard-view").classList.add("hidden");
+  showRequestPinView();
+}
+
+function showRequestPinView() {
+  clearPinTimers();
+  document.getElementById("login-request-pin-form")?.classList.remove("hidden");
+  document.getElementById("login-verify-pin-form")?.classList.add("hidden");
+  document.getElementById("login-password-form")?.classList.add("hidden");
+}
+
+function showPasswordFallbackView() {
+  clearPinTimers();
+  document.getElementById("login-request-pin-form")?.classList.add("hidden");
+  document.getElementById("login-verify-pin-form")?.classList.add("hidden");
+  document.getElementById("login-password-form")?.classList.remove("hidden");
+}
+
+function startPinTimers(expireSeconds = 300, cooldownSeconds = 60) {
+  clearPinTimers();
+
+  // 1. Expire Timer (5 mins)
+  let expireRemaining = expireSeconds;
+  const expireEl = document.getElementById("pin-expire-timer");
+  const updateExpireDisplay = () => {
+    const mins = Math.floor(expireRemaining / 60);
+    const secs = expireRemaining % 60;
+    if (expireEl) {
+      expireEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    if (expireRemaining <= 0) {
+      clearInterval(State.pinExpireInterval);
+      Toast.show("⚠️ รหัส PIN หมดอายุแล้ว กรุณากดขอรหัสใหม่", "warning");
+      const btnVerify = document.querySelector("#login-verify-pin-form button[type='submit']");
+      if (btnVerify) btnVerify.disabled = true;
+    }
+    expireRemaining--;
+  };
+  updateExpireDisplay();
+  State.pinExpireInterval = setInterval(updateExpireDisplay, 1000);
+
+  // 2. Cooldown Timer (60s)
+  let cooldownRemaining = cooldownSeconds;
+  const btnResend = document.getElementById("btn-resend-pin");
+  const cooldownSpan = document.getElementById("pin-cooldown-timer");
+  if (btnResend) {
+    btnResend.disabled = true;
+    btnResend.innerHTML = `ขอรหัสใหม่ (<span id="pin-cooldown-timer">${cooldownRemaining}</span>s)`;
+  }
+
+  const updateCooldownDisplay = () => {
+    const liveCooldownSpan = document.getElementById("pin-cooldown-timer");
+    if (liveCooldownSpan) liveCooldownSpan.textContent = cooldownRemaining;
+    if (cooldownRemaining <= 0) {
+      clearInterval(State.pinCooldownInterval);
+      if (btnResend) {
+        btnResend.disabled = false;
+        btnResend.textContent = "ขอรหัสใหม่";
+      }
+    }
+    cooldownRemaining--;
+  };
+  State.pinCooldownInterval = setInterval(updateCooldownDisplay, 1000);
+}
+
+function clearPinTimers() {
+  if (State.pinExpireInterval) clearInterval(State.pinExpireInterval);
+  if (State.pinCooldownInterval) clearInterval(State.pinCooldownInterval);
+  State.pinExpireInterval = null;
+  State.pinCooldownInterval = null;
 }
 
 function showDashboardView() {
@@ -532,6 +605,13 @@ function renderUsersTable() {
             ${u.role}
           </span>
         </td>
+        <td class="px-4 py-3">
+          ${u.telegram_chat_id 
+            ? `<span class="inline-flex items-center space-x-1 font-mono text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                <span>✈️</span><span>${u.telegram_chat_id}</span>
+               </span>`
+            : `<span class="text-slate-400 text-[11px] italic">ยังไม่ระบุ</span>`}
+        </td>
         <td class="px-4 py-3">${permText}</td>
         <td class="px-4 py-3 text-right space-x-1">
           <button onclick="editUser('${u.user_id}')" class="p-1 text-slate-400 hover:text-blue-600 rounded">
@@ -552,8 +632,9 @@ function resetUserForm() {
   State.editingUserId = null;
   document.getElementById("user-form").reset();
   document.getElementById("user-form-title").textContent = "➕ เพิ่มผู้ใช้ใหม่และกำหนดสิทธิ์";
-  document.getElementById("user-form-pass").required = true;
-  document.getElementById("user-form-pass-hint").textContent = "* จำเป็นต้องระบุสำหรับผู้ใช้ใหม่";
+  document.getElementById("user-form-pass").required = false;
+  document.getElementById("user-form-pass-hint").textContent = "(รหัสผ่านสำหรับโหมดสำรอง)";
+  document.getElementById("user-form-telegram").value = "";
 
   renderSitePermissionCheckboxes([]);
 }
@@ -567,6 +648,7 @@ function editUser(userId) {
   document.getElementById("user-form-username").value = user.username;
   document.getElementById("user-form-display").value = user.display_name || "";
   document.getElementById("user-form-role").value = user.role;
+  document.getElementById("user-form-telegram").value = user.telegram_chat_id || "";
   document.getElementById("user-form-pass").value = "";
   document.getElementById("user-form-pass").required = false;
   document.getElementById("user-form-pass-hint").textContent = "(เว้นว่างไว้หากไม่ต้องการเปลี่ยนรหัสผ่าน)";
@@ -626,6 +708,7 @@ async function handleUserSubmit(e) {
     username: document.getElementById("user-form-username").value.trim(),
     display_name: document.getElementById("user-form-display").value.trim(),
     role: document.getElementById("user-form-role").value,
+    telegram_chat_id: document.getElementById("user-form-telegram").value.trim(),
     password: document.getElementById("user-form-pass").value,
     allowed_sites: allowedSites
   };
@@ -820,20 +903,49 @@ async function confirmDeleteGroup(groupId, groupName, siteCount) {
 // Settings & Protocol Setup Modals
 // --------------------------------------------------------------------
 
-function openSettingsModal() {
-
+async function openSettingsModal() {
   document.getElementById("setting-gas-url").value = CONFIG.getGasApiUrl();
   document.getElementById("setting-conn-mode").value = CONFIG.getConnectionMode();
+  const testStatus = document.getElementById("telegram-test-status");
+  if (testStatus) testStatus.textContent = "";
+
   showModal("settings-modal");
+
+  // Load Telegram bot settings if logged in as Admin
+  if (Auth.isAdmin()) {
+    try {
+      const res = await API.call("getSettings", { token: Auth.getToken() });
+      if (res.success && res.settings) {
+        const tokenInput = document.getElementById("setting-telegram-token");
+        if (tokenInput) tokenInput.value = res.settings.telegram_bot_token || "";
+      }
+    } catch (err) {
+      console.error("Failed to load settings:", err);
+    }
+  }
 }
 
-function handleSaveSettings(e) {
+async function handleSaveSettings(e) {
   e.preventDefault();
   const url = document.getElementById("setting-gas-url").value.trim();
   const mode = document.getElementById("setting-conn-mode").value;
+  const botToken = document.getElementById("setting-telegram-token") ? document.getElementById("setting-telegram-token").value.trim() : "";
 
   CONFIG.setGasApiUrl(url);
   CONFIG.setConnectionMode(mode);
+
+  if (Auth.isAdmin()) {
+    try {
+      await API.call("saveSettings", {
+        token: Auth.getToken(),
+        settingsData: {
+          telegram_bot_token: botToken
+        }
+      });
+    } catch (err) {
+      console.error("Save remote settings error:", err);
+    }
+  }
 
   Toast.show("⚙️ บันทึกการตั้งค่าเรียบร้อยแล้ว", "success");
   hideModal("settings-modal");
@@ -848,6 +960,36 @@ function handleSaveSettings(e) {
   loadSites();
 }
 
+async function handleTestTelegramBot() {
+  const tokenInput = document.getElementById("setting-telegram-token");
+  const statusEl = document.getElementById("telegram-test-status");
+  const botToken = tokenInput ? tokenInput.value.trim() : "";
+
+  if (!botToken) {
+    if (statusEl) statusEl.innerHTML = `<span class="text-rose-500">กรุณาระบุ Token ก่อน</span>`;
+    return;
+  }
+
+  if (statusEl) statusEl.innerHTML = `<span class="text-slate-400">⏳ กำลังตรวจสอบ...</span>`;
+
+  try {
+    const res = await API.call("testTelegramBot", {
+      token: Auth.getToken(),
+      botToken: botToken
+    });
+
+    if (res.success) {
+      if (statusEl) statusEl.innerHTML = `<span class="text-emerald-600 font-semibold">✅ เชื่อมต่อสำเร็จ (@${res.bot?.username || ''})</span>`;
+      Toast.show(`🤖 เชื่อมต่อบอท @${res.bot?.username || ''} สำเร็จ!`, "success");
+    } else {
+      if (statusEl) statusEl.innerHTML = `<span class="text-rose-500">❌ ${res.message}</span>`;
+      Toast.show(res.message, "error");
+    }
+  } catch (err) {
+    if (statusEl) statusEl.innerHTML = `<span class="text-rose-500">❌ เกิดข้อผิดพลาด</span>`;
+  }
+}
+
 function openProtocolGuideModal() {
   showModal("protocol-guide-modal");
 }
@@ -856,27 +998,112 @@ function openProtocolGuideModal() {
 // Event Listeners & Modal Controls
 // --------------------------------------------------------------------
 
-function setupEventListeners() {
-  // Login Form Submit
-  const loginForm = document.getElementById("login-form");
-  if (loginForm) {
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const u = document.getElementById("login-username").value.trim();
-      const p = document.getElementById("login-password").value;
-
-      showLoading(true);
-      const res = await Auth.login(u, p);
-      showLoading(false);
-
-      if (res.success) {
-        Toast.show(`ยินดีต้อนรับคุณ ${res.user.displayName || res.user.username}`, "success");
-        showDashboardView();
-      } else {
-        Toast.show(res.message, "error");
-      }
-    });
+// Step 1: Request PIN
+async function handleRequestPinSubmit(e) {
+  if (e) e.preventDefault();
+  const username = document.getElementById("login-pin-username").value.trim();
+  if (!username) {
+    Toast.show("กรุณากรอกชื่อผู้ใช้งาน", "warning");
+    return;
   }
+
+  showLoading(true);
+  try {
+    const res = await Auth.requestPin(username);
+    showLoading(false);
+
+    if (res.success) {
+      State.pinUsername = username;
+      const badge = document.getElementById("verify-pin-username-badge");
+      if (badge) badge.textContent = username;
+      
+      const pinInput = document.getElementById("login-pin-code");
+      if (pinInput) pinInput.value = "";
+      
+      const btnVerify = document.querySelector("#login-verify-pin-form button[type='submit']");
+      if (btnVerify) btnVerify.disabled = false;
+
+      // Show Step 2
+      document.getElementById("login-request-pin-form")?.classList.add("hidden");
+      document.getElementById("login-verify-pin-form")?.classList.remove("hidden");
+      document.getElementById("login-password-form")?.classList.add("hidden");
+
+      startPinTimers(res.expireSeconds || 300, res.cooldownSeconds || 60);
+      Toast.show(res.message || "ส่งรหัส PIN ไปยัง Telegram เรียบร้อยแล้ว", "success");
+      setTimeout(() => document.getElementById("login-pin-code")?.focus(), 150);
+    } else {
+      Toast.show(res.message, "error");
+    }
+  } catch (err) {
+    showLoading(false);
+    Toast.show("เกิดข้อผิดพลาดในการเชื่อมต่อ", "error");
+  }
+}
+
+// Step 2: Verify PIN
+async function handleVerifyPinSubmit(e) {
+  e.preventDefault();
+  const pin = document.getElementById("login-pin-code").value.trim();
+  if (pin.length !== 6) {
+    Toast.show("กรุณากรอกรหัส PIN 6 หลักให้ครบถ้วน", "warning");
+    return;
+  }
+
+  showLoading(true);
+  try {
+    const res = await Auth.loginWithPin(State.pinUsername, pin);
+    showLoading(false);
+
+    if (res.success) {
+      clearPinTimers();
+      Toast.show(`ยินดีต้อนรับคุณ ${res.user.displayName || res.user.username}`, "success");
+      showDashboardView();
+    } else {
+      Toast.show(res.message, "error");
+      const pinInput = document.getElementById("login-pin-code");
+      if (pinInput) {
+        pinInput.value = "";
+        pinInput.focus();
+      }
+    }
+  } catch (err) {
+    showLoading(false);
+    Toast.show("เกิดข้อผิดพลาดในการเข้าสู่ระบบ", "error");
+  }
+}
+
+// Fallback: Password Login Submit
+async function handleFallbackLoginSubmit(e) {
+  e.preventDefault();
+  const u = document.getElementById("login-fallback-username").value.trim();
+  const p = document.getElementById("login-fallback-password").value;
+
+  showLoading(true);
+  const res = await Auth.login(u, p);
+  showLoading(false);
+
+  if (res.success) {
+    clearPinTimers();
+    Toast.show(`ยินดีต้อนรับคุณ ${res.user.displayName || res.user.username}`, "success");
+    showDashboardView();
+  } else {
+    Toast.show(res.message, "error");
+  }
+}
+
+function setupEventListeners() {
+  // Login Forms & View Toggles
+  document.getElementById("login-request-pin-form")?.addEventListener("submit", handleRequestPinSubmit);
+  document.getElementById("login-verify-pin-form")?.addEventListener("submit", handleVerifyPinSubmit);
+  document.getElementById("login-password-form")?.addEventListener("submit", handleFallbackLoginSubmit);
+
+  document.getElementById("btn-show-password-login")?.addEventListener("click", showPasswordFallbackView);
+  document.getElementById("btn-back-to-pin-login")?.addEventListener("click", showRequestPinView);
+  document.getElementById("btn-back-to-request")?.addEventListener("click", showRequestPinView);
+  document.getElementById("btn-resend-pin")?.addEventListener("click", () => handleRequestPinSubmit(null));
+
+  // Test Telegram Bot
+  document.getElementById("btn-test-bot")?.addEventListener("click", handleTestTelegramBot);
 
   // Logout Button
   const logoutBtn = document.getElementById("btn-logout");

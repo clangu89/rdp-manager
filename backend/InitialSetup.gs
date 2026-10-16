@@ -26,7 +26,8 @@ function runInitialSetup() {
       "display_name",
       "role",
       "status",
-      "created_at"
+      "created_at",
+      "telegram_chat_id"
     ]);
     formatHeaderRow(usersSheet);
     
@@ -39,7 +40,8 @@ function runInitialSetup() {
       "ผู้ดูแลระบบ (Administrator)",
       "admin",
       "active",
-      new Date()
+      new Date(),
+      ""
     ]);
 
     // สร้างบัญชีผู้ใช้ทั่วไปตัวอย่าง: staff / staff1234
@@ -51,7 +53,8 @@ function runInitialSetup() {
       "เจ้าหน้าที่ปฏิบัติการ (Staff)",
       "user",
       "active",
-      new Date()
+      new Date(),
+      ""
     ]);
   }
 
@@ -189,6 +192,28 @@ function runInitialSetup() {
     ]);
   }
 
+  // 6. สร้างหรือเตรียม Sheet: Settings
+  let settingsSheet = ss.getSheetByName("Settings");
+  if (!settingsSheet) {
+    settingsSheet = ss.insertSheet("Settings");
+  }
+  if (settingsSheet.getLastRow() === 0) {
+    settingsSheet.appendRow([
+      "key",
+      "value",
+      "updated_at"
+    ]);
+    formatHeaderRow(settingsSheet);
+
+    const now = new Date();
+    settingsSheet.appendRow(["TELEGRAM_BOT_TOKEN", "", now]);
+    settingsSheet.appendRow(["PIN_EXPIRE_MINUTES", "5", now]);
+    settingsSheet.appendRow(["MAX_PIN_ATTEMPTS", "3", now]);
+  }
+
+  // เรียกตรวจสอบ Migration
+  ensureSchemaMigration(ss);
+
   // ลบ Sheet1 เริ่มต้นถ้ามีและว่าง
   const defaultSheet = ss.getSheetByName("Sheet1") || ss.getSheetByName("แผ่นงาน1");
   if (defaultSheet && defaultSheet.getLastRow() === 0) {
@@ -198,6 +223,38 @@ function runInitialSetup() {
   }
 
   Logger.log("✅ การตั้งค่าฐานข้อมูลเริ่มต้นเสร็จสมบูรณ์เรียบร้อย!");
+}
+
+function ensureSchemaMigration(ss) {
+  if (!ss) ss = getSpreadsheet();
+  
+  // 1. ตรวจสอบตาราง Users ว่ามีคอลัมน์ telegram_chat_id หรือยัง
+  const usersSheet = ss.getSheetByName("Users");
+  if (usersSheet && usersSheet.getLastRow() > 0) {
+    const headers = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
+    const hasTelegramCol = headers.some(h => String(h).trim() === "telegram_chat_id");
+    if (!hasTelegramCol) {
+      const newColIndex = headers.length + 1;
+      usersSheet.getRange(1, newColIndex).setValue("telegram_chat_id");
+      formatHeaderRow(usersSheet);
+      Logger.log("✅ Auto-migrated Users sheet: added telegram_chat_id column at " + newColIndex);
+    }
+  }
+
+  // 2. ตรวจสอบตาราง Settings
+  let settingsSheet = ss.getSheetByName("Settings");
+  if (!settingsSheet) {
+    settingsSheet = ss.insertSheet("Settings");
+  }
+  if (settingsSheet.getLastRow() === 0) {
+    settingsSheet.appendRow(["key", "value", "updated_at"]);
+    formatHeaderRow(settingsSheet);
+    const now = new Date();
+    settingsSheet.appendRow(["TELEGRAM_BOT_TOKEN", "", now]);
+    settingsSheet.appendRow(["PIN_EXPIRE_MINUTES", "5", now]);
+    settingsSheet.appendRow(["MAX_PIN_ATTEMPTS", "3", now]);
+    Logger.log("✅ Auto-migrated Settings sheet created");
+  }
 }
 
 function formatHeaderRow(sheet) {

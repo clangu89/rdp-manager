@@ -140,6 +140,72 @@ const API = {
             }
             break;
 
+          case "requestLoginPin":
+            if (payload.username === "admin" || payload.username === "staff") {
+              const demoPin = "123456";
+              sessionStorage.setItem("demo_pin", demoPin);
+              sessionStorage.setItem("demo_pin_user", payload.username);
+              setTimeout(() => {
+                if (typeof Toast !== "undefined") {
+                  Toast.show("🤖 [Demo Telegram] รหัส PIN ของคุณคือ: 123456", "info");
+                }
+              }, 500);
+              resolve({
+                success: true,
+                message: "ระบบจำลองส่งรหัส PIN 6 หลักไปยัง Telegram แล้ว (รหัสเดโม่: 123456)",
+                cooldownSeconds: 60,
+                expireSeconds: 300
+              });
+            } else {
+              resolve({ success: false, message: "ไม่พบชื่อผู้ใช้งานนี้ในระบบเดโม่ (ทดลองใช้: admin หรือ staff)" });
+            }
+            break;
+
+          case "loginWithPin":
+            const savedPin = sessionStorage.getItem("demo_pin") || "123456";
+            const pinUser = sessionStorage.getItem("demo_pin_user") || payload.username;
+            if (payload.pin === savedPin) {
+              const isAdmin = pinUser === "admin";
+              resolve({
+                success: true,
+                token: isAdmin ? "DEMO_TOKEN_ADMIN" : "DEMO_TOKEN_STAFF",
+                user: {
+                  userId: isAdmin ? "USR-ADMIN-01" : "USR-STAFF-01",
+                  username: pinUser,
+                  displayName: isAdmin ? "ผู้ดูแลระบบ (Admin Demo)" : "เจ้าหน้าที่ทั่วไป (Staff Demo)",
+                  role: isAdmin ? "admin" : "user"
+                }
+              });
+            } else {
+              resolve({ success: false, message: "รหัส PIN ไม่ถูกต้อง (ในโหมด Demo ให้ใช้รหัส: 123456)" });
+            }
+            break;
+
+          case "getSettings":
+            resolve({
+              success: true,
+              settings: {
+                telegram_bot_token: localStorage.getItem("demo_telegram_bot_token") || "",
+                has_bot_token: Boolean(localStorage.getItem("demo_telegram_bot_token"))
+              }
+            });
+            break;
+
+          case "saveSettings":
+            if (payload.settingsData && payload.settingsData.telegram_bot_token !== undefined) {
+              localStorage.setItem("demo_telegram_bot_token", payload.settingsData.telegram_bot_token);
+            }
+            resolve({ success: true, message: "บันทึกการตั้งค่าเรียบร้อย (Demo)" });
+            break;
+
+          case "testTelegramBot":
+            resolve({
+              success: true,
+              message: "เชื่อมต่อ Telegram Bot สำเร็จ (@DemoRemoteBot)",
+              bot: { id: 12345678, username: "DemoRemoteBot", first_name: "RDP Manager Bot Demo" }
+            });
+            break;
+
           case "getSites":
             resolve({
               success: true,
