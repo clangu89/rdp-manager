@@ -397,7 +397,7 @@
   <!-- ================================================================ -->
   <div id="users-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
     <div class="modal-backdrop fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onclick="hideModal('users-modal')"></div>
-    <div class="modal-content relative bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-10 flex flex-col max-h-[90vh]">
+    <div class="modal-content relative bg-white w-full max-w-5xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-10 flex flex-col max-h-[90vh]">
       
       <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
         <div>
@@ -418,16 +418,16 @@
             <button onclick="resetUserForm()" class="text-xs text-blue-600 hover:underline font-semibold">+ เพิ่มผู้ใช้ใหม่</button>
           </div>
 
-          <div class="border border-slate-200 rounded-2xl overflow-hidden">
+          <div class="border border-slate-200 rounded-2xl overflow-x-auto bg-white shadow-2xs">
             <table class="w-full text-left text-xs">
               <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold">
                 <tr>
-                  <th class="px-4 py-2.5">Username</th>
-                  <th class="px-4 py-2.5">ชื่อแสดงผล</th>
-                  <th class="px-4 py-2.5">Role</th>
-                  <th class="px-4 py-2.5">Telegram ID</th>
-                  <th class="px-4 py-2.5">สิทธิ์ไซต์งาน</th>
-                  <th class="px-4 py-2.5 text-right">แก้ไข</th>
+                  <th class="px-3 py-2.5 whitespace-nowrap">Username</th>
+                  <th class="px-3 py-2.5 whitespace-nowrap">ชื่อแสดงผล</th>
+                  <th class="px-3 py-2.5 whitespace-nowrap">Role</th>
+                  <th class="px-3 py-2.5 whitespace-nowrap">Telegram ID</th>
+                  <th class="px-3 py-2.5 whitespace-nowrap">สิทธิ์ไซต์งาน</th>
+                  <th class="px-3 py-2.5 whitespace-nowrap text-right">จัดการ</th>
                 </tr>
               </thead>
               <tbody id="users-table-body" class="divide-y divide-slate-100">

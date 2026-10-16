@@ -595,30 +595,31 @@ function renderUsersTable() {
 
     return `
       <tr class="hover:bg-slate-50 transition-colors">
-        <td class="px-4 py-3 font-semibold text-slate-800">
+        <td class="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">
           ${u.username}
-          ${isSelf ? '<span class="ml-1 text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">(คุณ)</span>' : ''}
+          ${isSelf ? '<span class="ml-1 text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-normal">(คุณ)</span>' : ''}
         </td>
-        <td class="px-4 py-3 text-slate-600 text-xs">${u.display_name || '-'}</td>
-        <td class="px-4 py-3">
+        <td class="px-3 py-2.5 text-slate-600 text-xs">${u.display_name || '-'}</td>
+        <td class="px-3 py-2.5 whitespace-nowrap">
           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-700'}">
             ${u.role}
           </span>
         </td>
-        <td class="px-4 py-3">
+        <td class="px-3 py-2.5 whitespace-nowrap">
           ${u.telegram_chat_id 
             ? `<span class="inline-flex items-center space-x-1 font-mono text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
                 <span>✈️</span><span>${u.telegram_chat_id}</span>
                </span>`
             : `<span class="text-slate-400 text-[11px] italic">ยังไม่ระบุ</span>`}
         </td>
-        <td class="px-4 py-3">${permText}</td>
-        <td class="px-4 py-3 text-right space-x-1">
-          <button onclick="editUser('${u.user_id}')" class="p-1 text-slate-400 hover:text-blue-600 rounded">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+        <td class="px-3 py-2.5 whitespace-nowrap">${permText}</td>
+        <td class="px-3 py-2.5 text-right space-x-1.5 whitespace-nowrap">
+          <button onclick="editUser('${u.user_id}')" class="inline-flex items-center space-x-1 px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors" title="แก้ไขข้อมูล">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            <span>แก้ไข</span>
           </button>
           ${!isSelf ? `
-            <button onclick="confirmDeleteUser('${u.user_id}', '${u.username}')" class="p-1 text-slate-400 hover:text-rose-600 rounded">
+            <button onclick="confirmDeleteUser('${u.user_id}', '${u.username}')" class="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors" title="ลบผู้ใช้">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
             </button>
           ` : ''}
