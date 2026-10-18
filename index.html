@@ -202,6 +202,39 @@
               <span class="hidden sm:inline">1-Click Remote Setup</span>
             </button>
 
+            <!-- Online Users Presence Button & Popover (Option A) -->
+            <div class="relative" id="online-users-container">
+              <button id="btn-online-users" onclick="toggleOnlineUsersPopover(event)" class="inline-flex items-center px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 rounded-xl transition-all shadow-xs" title="คลิกเพื่อดูรายชื่อผู้ใช้งานที่กำลังออนไลน์">
+                <span class="relative flex h-2 w-2 mr-1.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span class="hidden sm:inline">ออนไลน์</span>
+                <span id="online-users-count" class="ml-1 px-1.5 py-0.2 bg-emerald-200/70 text-emerald-900 rounded-full text-[10px] font-bold min-w-[16px] text-center">0</span>
+              </button>
+
+              <!-- Dropdown Popover -->
+              <div id="online-users-popover" class="hidden absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                <div class="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <span class="relative flex h-2 w-2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span class="text-xs font-bold text-slate-800">ผู้ใช้งานที่กำลังออนไลน์</span>
+                  </div>
+                  <span id="online-users-popover-count" class="text-[11px] font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full border border-emerald-200">0 คน</span>
+                </div>
+                <div id="online-users-list" class="max-h-72 overflow-y-auto divide-y divide-slate-100 p-1">
+                  <!-- Dynamic user list items -->
+                  <div class="p-4 text-center text-xs text-slate-400">กำลังโหลดข้อมูล...</div>
+                </div>
+                <div class="px-3 py-2 bg-slate-50/80 border-t border-slate-100 text-[10px] text-slate-400 text-center">
+                  อัปเดตอัตโนมัติทุก 45 วินาที
+                </div>
+              </div>
+            </div>
+
             <!-- User Info Badge -->
             <div class="flex items-center pl-2 pr-3 py-1 bg-slate-100 rounded-xl border border-slate-200 text-xs">
               <div class="w-6 h-6 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-[11px] mr-2">
@@ -439,6 +472,7 @@
             <table class="w-full text-left text-xs">
               <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold">
                 <tr>
+                  <th class="px-3 py-2.5 whitespace-nowrap text-center">สถานะ</th>
                   <th class="px-3 py-2.5 whitespace-nowrap">Username</th>
                   <th class="px-3 py-2.5 whitespace-nowrap">ชื่อแสดงผล</th>
                   <th class="px-3 py-2.5 whitespace-nowrap">Role</th>

@@ -52,7 +52,13 @@ const Auth = {
     }
   },
 
-  logout() {
+  async logout() {
+    const token = this.getToken();
+    if (token) {
+      try {
+        await API.call("logout", { token: token });
+      } catch (e) {}
+    }
     sessionStorage.removeItem(this.TOKEN_KEY);
     sessionStorage.removeItem(this.USER_KEY);
     localStorage.removeItem(this.TOKEN_KEY);

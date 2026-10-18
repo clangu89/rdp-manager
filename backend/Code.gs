@@ -82,7 +82,13 @@ function handleRequest(params) {
         return createJsonResponse(handleDeleteUser(params.token, params.userId));
 
       case "logRemoteAction":
-        return createJsonResponse(handleLogRemoteAction(params.token, params.siteId, params.machineName || params.machineId));
+        return createJsonResponse(handleLogRemoteAction(params.token, params.siteId, params.machineName || params.machineId, params.machineId, params.siteName));
+
+      case "heartbeat":
+        return createJsonResponse(handleHeartbeat(params.token));
+
+      case "logout":
+        return createJsonResponse(handleLogout(params.token));
 
       case "getGroups":
         return createJsonResponse(handleGetGroups(params.token));
@@ -162,7 +168,8 @@ function handleLogin(username, password) {
         }
 
         // สร้าง Session Token แบบลงนาม
-        const token = generateSessionToken(uId, uRole);
+        const token = generateSessionToken(uId, uRole, uName, uDisplayName);
+        touchUserPresence({ userId: uId, role: uRole, username: uName, displayName: uDisplayName });
         
         writeAuditLog(uId, "LOGIN", "-", "ผู้ใช้ล็อกอินสำเร็จ (" + uName + ")");
 
@@ -350,7 +357,8 @@ function handleLoginWithPin(username, pin) {
           return { success: false, message: "บัญชีนี้ถูกปิดการใช้งาน กรุณาติดต่อผู้ดูแลระบบ" };
         }
 
-        const token = generateSessionToken(uId, uRole);
+        const token = generateSessionToken(uId, uRole, uName, uDisplayName);
+        touchUserPresence({ userId: uId, role: uRole, username: uName, displayName: uDisplayName });
         writeAuditLog(uId, "LOGIN_PIN", "-", "เข้าสู่ระบบด้วย One-Time PIN 6 หลักสำเร็จ (" + uName + ")");
 
         return {
@@ -383,9 +391,11 @@ function handleLoginWithPin(username, pin) {
   }
 }
 
-function generateSessionToken(userId, role) {
+function generateSessionToken(userId, role, username, displayName) {
   const expiresAt = new Date().getTime() + (8 * 60 * 60 * 1000); // 8 ชั่วโมง
-  const payload = userId + "::" + role + "::" + expiresAt;
+  const uName = (username || "").replace(/::/g, "_");
+  const dName = (displayName || "").replace(/::/g, "_");
+  const payload = userId + "::" + role + "::" + expiresAt + "::" + uName + "::" + dName;
   const signature = Utilities.base64Encode(
     Utilities.computeHmacSha256Signature(payload, SECRET_SALT)
   );
@@ -405,12 +415,18 @@ function verifySessionToken(token) {
 
     if (parts[1] !== expectedSig) return null;
 
-    const [userId, role, expiresAt] = payloadStr.split("::");
+    const segs = payloadStr.split("::");
+    const userId = segs[0];
+    const role = segs[1];
+    const expiresAt = segs[2];
+    const username = segs[3] || "";
+    const displayName = segs[4] || "";
+
     if (new Date().getTime() > parseInt(expiresAt, 10)) {
       return null; // Token หมดอายุ
     }
 
-    return { userId: userId, role: role };
+    return { userId: userId, role: role, username: username, displayName: displayName };
   } catch (e) {
     return null;
   }
@@ -436,7 +452,8 @@ function handleGetSites(token) {
 
   const siteRows = sitesSheet.getDataRange().getValues();
   if (siteRows.length <= 1) {
-    return { success: true, role: session.role, sites: [] };
+    touchUserPresence(session);
+    return { success: true, role: session.role, sites: [], online_users: getOnlineUsersList() };
   }
 
   const headers = siteRows[0].map(h => String(h).trim());
@@ -545,10 +562,13 @@ function handleGetSites(token) {
     });
   }
 
+  touchUserPresence(session);
+
   return {
     success: true,
     role: session.role,
-    sites: sites
+    sites: sites,
+    online_users: getOnlineUsersList()
   };
 }
 
@@ -725,13 +745,24 @@ function handleDeleteSite(token, siteId) {
   return { success: false, message: "ไม่พบรหัสไซต์งานที่ต้องการลบ" };
 }
 
-function handleLogRemoteAction(token, siteId, machineName) {
+function handleLogRemoteAction(token, siteId, machineName, machineId, siteName) {
   const session = verifySessionToken(token);
   if (session) {
     const detail = machineName ? "เปิดการเชื่อมต่อ Remote Desktop เครื่อง: " + machineName : "เปิดการเชื่อมต่อ Remote Desktop";
     writeAuditLog(session.userId, "REMOTE_CONNECT", siteId, detail);
+
+    touchUserPresence(session, {
+      siteId: siteId,
+      siteName: siteName || "",
+      machineId: machineId || "",
+      machineName: machineName || "",
+      connectedAt: Date.now()
+    });
   }
-  return { success: true };
+  return { 
+    success: true,
+    online_users: getOnlineUsersList()
+  };
 }
 
 // --------------------------------------------------------------------
@@ -795,10 +826,13 @@ function handleGetUsers(token) {
     });
   }
 
+  touchUserPresence(session);
+
   return {
     success: true,
     users: users,
-    all_sites: allSites
+    all_sites: allSites,
+    online_users: getOnlineUsersList()
   };
 }
 
@@ -1369,4 +1403,178 @@ function testTelegramBotApi(botToken) {
   } catch (err) {
     return { success: false, message: "ไม่สามารถเชื่อมต่อ Telegram API: " + err.message };
   }
+}
+
+// --------------------------------------------------------------------
+// Real-time Online Users Presence Management
+// --------------------------------------------------------------------
+
+const PRESENCE_CACHE_KEY = "ONLINE_USERS_MAP_V1";
+const PRESENCE_TIMEOUT_MS = 2 * 60 * 1000;       // 2 นาที หากขาด heartbeat ถือว่า offline
+const REMOTE_ACTIVE_TIMEOUT_MS = 30 * 60 * 1000;  // 30 นาที สำหรับสถานะกำลังเชื่อมต่อเครื่อง
+
+function lookupUserById(userId) {
+  try {
+    const ss = getSpreadsheet();
+    const sheet = ss.getSheetByName("Users");
+    if (!sheet) return null;
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === String(userId).trim()) {
+        return {
+          userId: data[i][0],
+          username: data[i][1],
+          displayName: data[i][3],
+          role: data[i][4]
+        };
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function touchUserPresence(session, activeRemote) {
+  if (!session || !session.userId) return;
+  try {
+    const cache = CacheService.getScriptCache();
+    let map = {};
+    const raw = cache.get(PRESENCE_CACHE_KEY);
+    if (raw) {
+      try { map = JSON.parse(raw); } catch (e) { map = {}; }
+    }
+    const now = Date.now();
+    const uId = String(session.userId);
+
+    // Prune stale users (> 2 นาที)
+    for (let id in map) {
+      if (!map[id].lastSeen || (now - map[id].lastSeen > PRESENCE_TIMEOUT_MS)) {
+        delete map[id];
+      }
+    }
+
+    let existing = map[uId] || {};
+    let uName = session.username || existing.username;
+    let dName = session.displayName || existing.displayName;
+    let role = session.role || existing.role;
+
+    if (!uName || !dName) {
+      const userObj = lookupUserById(uId);
+      if (userObj) {
+        uName = uName || userObj.username;
+        dName = dName || userObj.displayName;
+        role = role || userObj.role;
+      }
+    }
+
+    // จัดการ activeRemote
+    let remoteInfo = existing.activeRemote || null;
+    if (activeRemote) {
+      remoteInfo = activeRemote;
+    } else if (remoteInfo && remoteInfo.connectedAt) {
+      if (now - remoteInfo.connectedAt > REMOTE_ACTIVE_TIMEOUT_MS) {
+        remoteInfo = null;
+      }
+    }
+
+    map[uId] = {
+      userId: uId,
+      username: uName || "User",
+      displayName: dName || uName || "User",
+      role: role || "staff",
+      lastSeen: now,
+      activeRemote: remoteInfo
+    };
+
+    cache.put(PRESENCE_CACHE_KEY, JSON.stringify(map), 21600); // 6 ชั่วโมง
+  } catch (err) {
+    Logger.log("Error in touchUserPresence: " + err.message);
+  }
+}
+
+function removeUserPresence(userId) {
+  if (!userId) return;
+  try {
+    const cache = CacheService.getScriptCache();
+    let map = {};
+    const raw = cache.get(PRESENCE_CACHE_KEY);
+    if (raw) {
+      try { map = JSON.parse(raw); } catch (e) { map = {}; }
+    }
+    const uId = String(userId);
+    if (map[uId]) {
+      delete map[uId];
+      cache.put(PRESENCE_CACHE_KEY, JSON.stringify(map), 21600);
+    }
+  } catch (err) {
+    Logger.log("Error in removeUserPresence: " + err.message);
+  }
+}
+
+function getOnlineUsersList() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const raw = cache.get(PRESENCE_CACHE_KEY);
+    if (!raw) return [];
+    let map = {};
+    try { map = JSON.parse(raw); } catch (e) { return []; }
+
+    const now = Date.now();
+    const list = [];
+    let hasExpired = false;
+
+    for (let id in map) {
+      const u = map[id];
+      if (u.lastSeen && (now - u.lastSeen <= PRESENCE_TIMEOUT_MS)) {
+        let remote = u.activeRemote;
+        if (remote && remote.connectedAt && (now - remote.connectedAt > REMOTE_ACTIVE_TIMEOUT_MS)) {
+          remote = null;
+          u.activeRemote = null;
+          hasExpired = true;
+        }
+
+        list.push({
+          user_id: u.userId,
+          username: u.username,
+          display_name: u.displayName,
+          role: u.role,
+          last_seen: u.lastSeen,
+          active_remote: remote
+        });
+      } else {
+        delete map[id];
+        hasExpired = true;
+      }
+    }
+
+    if (hasExpired) {
+      try { cache.put(PRESENCE_CACHE_KEY, JSON.stringify(map), 21600); } catch (e) {}
+    }
+
+    list.sort((a, b) => (a.display_name || a.username || "").localeCompare(b.display_name || b.username || ""));
+    return list;
+  } catch (err) {
+    Logger.log("Error in getOnlineUsersList: " + err.message);
+    return [];
+  }
+}
+
+function handleHeartbeat(token) {
+  const session = verifySessionToken(token);
+  if (!session) {
+    return { success: false, message: "Session expired" };
+  }
+  touchUserPresence(session);
+  return {
+    success: true,
+    online_users: getOnlineUsersList()
+  };
+}
+
+function handleLogout(token) {
+  const session = verifySessionToken(token);
+  if (session) {
+    removeUserPresence(session.userId);
+    writeAuditLog(session.userId, "LOGOUT", "-", "ผู้ใช้ออกจากระบบ (" + (session.username || session.userId) + ")");
+  }
+  return { success: true };
 }

@@ -296,7 +296,17 @@ const API = {
             resolve({
               success: true,
               role: payload.token === "DEMO_TOKEN_ADMIN" ? "admin" : "user",
-              sites: payload.token === "DEMO_TOKEN_ADMIN" ? demoSites : [demoSites[1]]
+              sites: payload.token === "DEMO_TOKEN_ADMIN" ? demoSites : [demoSites[1]],
+              online_users: [
+                {
+                  user_id: "USR-001",
+                  username: "admin",
+                  display_name: "ผู้ดูแลระบบ (Admin)",
+                  role: "admin",
+                  last_seen: Date.now(),
+                  active_remote: null
+                }
+              ]
             });
             break;
 
@@ -496,8 +506,50 @@ const API = {
 
           case "saveUser":
           case "deleteUser":
-          case "logRemoteAction":
             resolve({ success: true, message: "ดำเนินการสำเร็จ (Demo)" });
+            break;
+
+          case "logRemoteAction":
+            resolve({
+              success: true,
+              message: "บันทึกการ Remote สำเร็จ (Demo)",
+              online_users: [
+                {
+                  user_id: "USR-001",
+                  username: "admin",
+                  display_name: "ผู้ดูแลระบบ (Admin)",
+                  role: "admin",
+                  last_seen: Date.now(),
+                  active_remote: {
+                    siteId: payload.siteId,
+                    siteName: payload.siteName || "",
+                    machineId: payload.machineId || "",
+                    machineName: payload.machineName || "",
+                    connectedAt: Date.now()
+                  }
+                }
+              ]
+            });
+            break;
+
+          case "heartbeat":
+            resolve({
+              success: true,
+              online_users: [
+                {
+                  user_id: "USR-001",
+                  username: "admin",
+                  display_name: "ผู้ดูแลระบบ (Admin)",
+                  role: "admin",
+                  last_seen: Date.now(),
+                  active_remote: null
+                }
+              ]
+            });
+            break;
+
+          case "logout":
+            resolve({ success: true });
             break;
 
           default:

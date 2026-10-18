@@ -21,7 +21,10 @@ const State = {
   // PIN Login State
   pinUsername: "",
   pinExpireInterval: null,
-  pinCooldownInterval: null
+  pinCooldownInterval: null,
+  // Online Presence State
+  onlineUsers: [],
+  heartbeatInterval: null
 };
 
 
@@ -82,6 +85,16 @@ async function copyToClipboard(text, label = "คัดลอกสำเร็�
   }
 }
 
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // --------------------------------------------------------------------
 // UI Controllers & Rendering
 // --------------------------------------------------------------------
@@ -103,6 +116,7 @@ function initApp() {
 }
 
 function showLoginView() {
+  stopPresenceHeartbeat();
   document.getElementById("login-view").classList.remove("hidden");
   document.getElementById("dashboard-view").classList.add("hidden");
   showRequestPinView();
@@ -207,6 +221,7 @@ function showDashboardView() {
 
   loadGroups();
   loadSites();
+  startPresenceHeartbeat();
 }
 
 async function loadGroups() {
@@ -252,6 +267,9 @@ async function loadSites() {
     const res = await API.call("getSites", { token: Auth.getToken() });
     if (res.success) {
       State.sites = res.sites || [];
+      if (res.online_users) {
+        updateOnlineUsers(res.online_users);
+      }
       updateGroupFilters();
       renderSites();
     } else {
@@ -381,16 +399,25 @@ function renderSites() {
 
           <!-- Machines List inside Card (Option 1: Stacked with 1-Click Remote per machine) -->
           <div class="space-y-2.5 max-h-80 overflow-y-auto pr-0.5">
-            ${machines.map(m => `
-              <div class="bg-slate-50/90 hover:bg-blue-50/40 p-3 rounded-xl border border-slate-200/80 hover:border-blue-200 transition-all flex flex-col justify-between">
+            ${machines.map(m => {
+              const activeUser = getActiveRemoteForMachine(site.site_id, m.machine_id);
+              return `
+              <div class="bg-slate-50/90 hover:bg-blue-50/40 p-3 rounded-xl border ${activeUser ? 'border-amber-300 bg-amber-50/30 ring-1 ring-amber-300/50' : 'border-slate-200/80 hover:border-blue-200'} transition-all flex flex-col justify-between">
                 <div>
                   <div class="flex items-center justify-between mb-1.5">
                     <span class="font-bold text-xs text-slate-800 flex items-center">
-                      <span class="w-2 h-2 rounded-full bg-emerald-500 mr-1.5"></span>
-                      ${m.machine_name}
+                      <span class="w-2 h-2 rounded-full ${activeUser ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'} mr-1.5"></span>
+                      ${escapeHtml(m.machine_name)}
                     </span>
-                    ${m.note ? `<span class="text-[10px] text-slate-400 truncate max-w-[120px] bg-white px-1.5 py-0.5 rounded border border-slate-100" title="${m.note}">${m.note}</span>` : ''}
+                    ${m.note ? `<span class="text-[10px] text-slate-400 truncate max-w-[120px] bg-white px-1.5 py-0.5 rounded border border-slate-100" title="${escapeHtml(m.note)}">${escapeHtml(m.note)}</span>` : ''}
                   </div>
+
+                  ${activeUser ? `
+                    <div class="mb-2 flex items-center px-2 py-1 rounded-lg text-[11px] font-semibold bg-amber-100/90 text-amber-900 border border-amber-300">
+                      <span class="w-2 h-2 rounded-full bg-amber-500 mr-1.5 animate-pulse"></span>
+                      <span class="truncate">👤 กำลังเชื่อมต่อ: ${escapeHtml(activeUser.display_name || activeUser.username)}</span>
+                    </div>
+                  ` : ''}
 
                   <div class="space-y-1 text-xs font-mono">
                     <div class="flex items-center justify-between">
@@ -406,7 +433,7 @@ function renderSites() {
                     <div class="flex items-center justify-between">
                       <span class="text-slate-400 font-sans text-[11px]">User:</span>
                       <div class="flex items-center space-x-1">
-                        <span class="text-slate-700">${m.username}</span>
+                        <span class="text-slate-700">${escapeHtml(m.username)}</span>
                         <button onclick="copyToClipboard('${m.username}', 'คัดลอก Username')" class="text-slate-400 hover:text-slate-700 p-0.5" title="คัดลอก Username">
                           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
@@ -416,12 +443,13 @@ function renderSites() {
                 </div>
 
                 <!-- 1-Click Remote for this Machine -->
-                <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse mt-2.5 w-full py-1.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold rounded-lg shadow-2xs active:scale-[0.98] transition-all flex items-center justify-center space-x-1.5">
+                <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse mt-2.5 w-full py-1.5 px-3 bg-gradient-to-r ${activeUser ? 'from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700' : 'from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'} text-white text-xs font-semibold rounded-lg shadow-2xs active:scale-[0.98] transition-all flex items-center justify-center space-x-1.5" ${activeUser ? `title="มีผู้ใช้กำลังใช้งานเครื่องนี้ (${escapeHtml(activeUser.display_name || activeUser.username)}) คุณยังคงสามารถเชื่อมต่อได้"` : ''}>
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                  <span>Remote (${m.machine_name})</span>
+                  <span>Remote (${escapeHtml(m.machine_name)})</span>
                 </button>
               </div>
-            `).join("")}
+            `;
+            }).join("")}
           </div>
         </div>
       </div>
@@ -458,40 +486,51 @@ function renderSites() {
               return `
               <tr class="hover:bg-slate-50/70 transition-colors">
                 <td class="px-5 py-4 align-top">
-                  <div class="font-bold text-slate-800">${site.site_name}</div>
+                  <div class="font-bold text-slate-800">${escapeHtml(site.site_name)}</div>
                   <div class="text-xs text-blue-600 font-semibold mt-0.5">🖥️ ${machines.length} เครื่อง</div>
-                  ${site.description ? `<div class="text-xs text-slate-400 mt-0.5">${site.description}</div>` : ''}
+                  ${site.description ? `<div class="text-xs text-slate-400 mt-0.5">${escapeHtml(site.description)}</div>` : ''}
                 </td>
                 <td class="px-5 py-4 align-top">
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                    ${site.group_name || 'General'}
+                    ${escapeHtml(site.group_name || 'General')}
                   </span>
                 </td>
                 <td class="px-5 py-4">
                   <div class="space-y-2">
-                    ${machines.map(m => `
-                      <div class="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 gap-2 text-xs">
+                    ${machines.map(m => {
+                      const activeUser = getActiveRemoteForMachine(site.site_id, m.machine_id);
+                      return `
+                      <div class="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-xl ${activeUser ? 'bg-amber-50/60 border-amber-300 ring-1 ring-amber-300/40' : 'bg-slate-50 border-slate-200/80'} border gap-2 text-xs">
                         <div>
-                          <span class="font-bold text-slate-800">${m.machine_name}</span>
-                          ${m.note ? `<span class="ml-1 text-[11px] text-slate-400">(${m.note})</span>` : ''}
+                          <div class="flex items-center space-x-1.5 flex-wrap">
+                            <span class="font-bold text-slate-800">${escapeHtml(m.machine_name)}</span>
+                            ${m.note ? `<span class="text-[11px] text-slate-400">(${escapeHtml(m.note)})</span>` : ''}
+                            ${activeUser ? `
+                              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-900 border border-amber-300">
+                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1 animate-pulse"></span>
+                                <span>👤 กำลังเชื่อมต่อ: ${escapeHtml(activeUser.display_name || activeUser.username)}</span>
+                              </span>
+                            ` : ''}
+                          </div>
                           <div class="font-mono text-slate-600 text-[11px] flex items-center space-x-1.5 mt-0.5">
                             <span>${m.ip_address}:${m.port || 3389}</span>
                             <button onclick="copyToClipboard('${m.ip_address}:${m.port || 3389}', 'คัดลอก IP')" class="text-slate-400 hover:text-slate-700">
                               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                             </button>
                             <span class="text-slate-300">|</span>
-                            <span>${m.username}</span>
+                            <span>${escapeHtml(m.username)}</span>
                             <button onclick="copyToClipboard('${m.username}', 'คัดลอก Username')" class="text-slate-400 hover:text-slate-700">
                               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                             </button>
                           </div>
                         </div>
-                        <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-2xs whitespace-nowrap self-start sm:self-auto">
+                        <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse inline-flex items-center px-3 py-1.5 ${activeUser ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-lg shadow-2xs whitespace-nowrap self-start sm:self-auto" ${activeUser ? `title="มีผู้ใช้กำลังใช้งานเครื่องนี้ (${escapeHtml(activeUser.display_name || activeUser.username)})"` : ''}>
                           <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                           Remote
                         </button>
                       </div>
-                    `).join("")}
+                    `;
+                    }).join("")}
                   </div>
                 </td>
                 <td class="px-5 py-4 text-right whitespace-nowrap align-top">
@@ -515,6 +554,150 @@ function renderSites() {
     `;
   }
 }
+
+// --------------------------------------------------------------------
+// Real-time Presence & Heartbeat Management
+// --------------------------------------------------------------------
+
+function getActiveRemoteForMachine(siteId, machineId) {
+  if (!State.onlineUsers || State.onlineUsers.length === 0) return null;
+  const now = Date.now();
+  for (const u of State.onlineUsers) {
+    if (u.active_remote) {
+      const ar = u.active_remote;
+      const matchSite = String(ar.siteId) === String(siteId);
+      const matchMachine = !machineId || !ar.machineId || String(ar.machineId) === String(machineId);
+      // นับว่า active หากไม่เกิน 30 นาที
+      if (matchSite && matchMachine && (now - ar.connectedAt <= 30 * 60 * 1000)) {
+        return u;
+      }
+    }
+  }
+  return null;
+}
+
+function startPresenceHeartbeat() {
+  stopPresenceHeartbeat();
+  // ส่ง heartbeat ทุก 45 วินาที
+  State.heartbeatInterval = setInterval(sendPresenceHeartbeat, 45000);
+}
+
+function stopPresenceHeartbeat() {
+  if (State.heartbeatInterval) {
+    clearInterval(State.heartbeatInterval);
+    State.heartbeatInterval = null;
+  }
+}
+
+async function sendPresenceHeartbeat() {
+  if (!Auth.isLoggedIn()) return;
+  try {
+    const res = await API.call("heartbeat", { token: Auth.getToken() });
+    if (res.success && res.online_users) {
+      updateOnlineUsers(res.online_users);
+    }
+  } catch (err) {
+    console.error("Presence heartbeat error:", err);
+  }
+}
+
+function updateOnlineUsers(users) {
+  State.onlineUsers = Array.isArray(users) ? users : [];
+  renderOnlineUsersUI();
+}
+
+function renderOnlineUsersUI() {
+  const users = State.onlineUsers || [];
+  const count = users.length;
+  
+  // 1. Update Count Badges
+  const countEl = document.getElementById("online-users-count");
+  if (countEl) countEl.textContent = count;
+
+  const popoverCountEl = document.getElementById("online-users-popover-count");
+  if (popoverCountEl) popoverCountEl.textContent = `${count} คน`;
+
+  // 2. Render Popover List
+  const listEl = document.getElementById("online-users-list");
+  if (listEl) {
+    if (count === 0) {
+      listEl.innerHTML = `<div class="p-4 text-center text-xs text-slate-400">ยังไม่มีผู้ใช้งานออนไลน์</div>`;
+    } else {
+      const currentUserId = Auth.getUser()?.userId;
+      const currentUsername = Auth.getUser()?.username;
+
+      listEl.innerHTML = users.map(u => {
+        const isSelf = (currentUserId && String(u.user_id) === String(currentUserId)) ||
+                       (currentUsername && u.username && currentUsername.toLowerCase() === u.username.toLowerCase());
+        const roleLabel = u.role === "admin" ? "Admin" : "User";
+        const roleClass = u.role === "admin" ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-slate-100 text-slate-600 border-slate-200";
+
+        let remoteBadge = "";
+        if (u.active_remote) {
+          const ar = u.active_remote;
+          const label = ar.machineName || ar.siteName || "เครื่องรีโมต";
+          remoteBadge = `
+            <div class="mt-1 flex items-center space-x-1 text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+              <span class="font-medium truncate max-w-[200px]">🖥️ กำลัง Remote: ${escapeHtml(label)}</span>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="p-2.5 hover:bg-slate-50 transition-colors flex items-start space-x-2.5 rounded-xl">
+            <div class="relative shrink-0 mt-0.5">
+              <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                ${escapeHtml((u.display_name || u.username || "U").charAt(0).toUpperCase())}
+              </div>
+              <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-800 truncate">
+                  ${escapeHtml(u.display_name || u.username)}
+                  ${isSelf ? '<span class="text-[10px] text-blue-600 bg-blue-50 px-1 py-0.2 rounded font-normal ml-1">(คุณ)</span>' : ''}
+                </span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded-full font-semibold border ${roleClass}">
+                  ${roleLabel}
+                </span>
+              </div>
+              <div class="text-[10px] text-slate-400 font-mono">@${escapeHtml(u.username)}</div>
+              ${remoteBadge}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  // 3. Update Users Table if modal is open
+  const usersModal = document.getElementById("users-modal");
+  if (usersModal && !usersModal.classList.contains("hidden")) {
+    renderUsersTable();
+  }
+}
+
+function toggleOnlineUsersPopover(e) {
+  if (e) e.stopPropagation();
+  const popover = document.getElementById("online-users-popover");
+  if (!popover) return;
+  const isHidden = popover.classList.contains("hidden");
+  if (isHidden) {
+    popover.classList.remove("hidden");
+  } else {
+    popover.classList.add("hidden");
+  }
+}
+
+// ปิด Popover เมื่อคลิกพื้นที่อื่น
+document.addEventListener("click", (e) => {
+  const container = document.getElementById("online-users-container");
+  const popover = document.getElementById("online-users-popover");
+  if (container && popover && !container.contains(e.target)) {
+    popover.classList.add("hidden");
+  }
+});
 
 function triggerRemote(siteId, machineId = null) {
   const site = State.sites.find(s => s.site_id === siteId);
@@ -844,6 +1027,9 @@ async function openUsersModal() {
     if (res.success) {
       State.users = res.users || [];
       State.allSitesForPerm = res.all_sites || [];
+      if (res.online_users) {
+        updateOnlineUsers(res.online_users);
+      }
       renderUsersTable();
       resetUserForm();
       showModal("users-modal");
@@ -860,20 +1046,37 @@ async function openUsersModal() {
 function renderUsersTable() {
   const container = document.getElementById("users-table-body");
   const currentUserId = Auth.getUser()?.userId;
+  const currentUsername = Auth.getUser()?.username;
 
   container.innerHTML = State.users.map(u => {
-    const isSelf = u.user_id === currentUserId;
+    const isSelf = (currentUserId && String(u.user_id) === String(currentUserId)) ||
+                   (currentUsername && u.username && currentUsername.toLowerCase() === u.username.toLowerCase());
+    const isOnline = (State.onlineUsers || []).some(ou => 
+      String(ou.user_id) === String(u.user_id) || 
+      (ou.username && u.username && ou.username.toLowerCase() === u.username.toLowerCase())
+    );
+
     const permText = u.role === "admin" || (u.allowed_sites && u.allowed_sites.includes("*"))
       ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">เห็นทุกไซต์งาน (All)</span>`
       : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">${u.allowed_sites.length} ไซต์</span>`;
 
     return `
       <tr class="hover:bg-slate-50 transition-colors">
+        <td class="px-3 py-2.5 text-center whitespace-nowrap">
+          ${isOnline 
+            ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>ออนไลน์
+               </span>`
+            : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-normal text-slate-400 bg-slate-50 border border-slate-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-slate-300 mr-1"></span>ออฟไลน์
+               </span>`
+          }
+        </td>
         <td class="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">
-          ${u.username}
+          ${escapeHtml(u.username)}
           ${isSelf ? '<span class="ml-1 text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-normal">(คุณ)</span>' : ''}
         </td>
-        <td class="px-3 py-2.5 text-slate-600 text-xs">${u.display_name || '-'}</td>
+        <td class="px-3 py-2.5 text-slate-600 text-xs">${escapeHtml(u.display_name) || '-'}</td>
         <td class="px-3 py-2.5 whitespace-nowrap">
           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-700'}">
             ${u.role}

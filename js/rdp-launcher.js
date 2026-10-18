@@ -21,12 +21,18 @@ const RdpLauncher = {
 
     const mode = CONFIG.getConnectionMode(); // 'protocol' หรือ 'rdp_file'
 
-    // บันทึก Audit Log ผ่าน API ในเบื้องหลัง
+    // บันทึก Audit Log และสถานะการ Remote ผ่าน API ในเบื้องหลัง
     if (Auth.isLoggedIn()) {
       API.call("logRemoteAction", {
         token: Auth.getToken(),
         siteId: site.site_id,
+        siteName: site.site_name,
+        machineId: targetMachine.machine_id,
         machineName: targetMachine.machine_name
+      }).then(res => {
+        if (res && res.online_users && typeof updateOnlineUsers === "function") {
+          updateOnlineUsers(res.online_users);
+        }
       });
     }
 
