@@ -384,7 +384,7 @@ function handleLoginWithPin(username, pin) {
 }
 
 function generateSessionToken(userId, role) {
-  const expiresAt = new Date().getTime() + (7 * 24 * 60 * 60 * 1000); // 7 วัน
+  const expiresAt = new Date().getTime() + (8 * 60 * 60 * 1000); // 8 ชั่วโมง
   const payload = userId + "::" + role + "::" + expiresAt;
   const signature = Utilities.base64Encode(
     Utilities.computeHmacSha256Signature(payload, SECRET_SALT)

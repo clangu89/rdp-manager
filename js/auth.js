@@ -5,6 +5,12 @@
  * จัดการการล็อกอิน สถานะผู้ใช้ และสิทธิ์การเข้าถึง
  */
 
+// เคลียร์ Token เก่าที่เคยบันทึกค้างไว้ใน localStorage ของเบราว์เซอร์อัตโนมัติ
+try {
+  localStorage.removeItem("rdp_auth_token");
+  localStorage.removeItem("rdp_auth_user");
+} catch (e) {}
+
 const Auth = {
   TOKEN_KEY: "rdp_auth_token",
   USER_KEY: "rdp_auth_user",
@@ -16,8 +22,8 @@ const Auth = {
     });
 
     if (res.success && res.token) {
-      localStorage.setItem(this.TOKEN_KEY, res.token);
-      localStorage.setItem(this.USER_KEY, JSON.stringify(res.user));
+      sessionStorage.setItem(this.TOKEN_KEY, res.token);
+      sessionStorage.setItem(this.USER_KEY, JSON.stringify(res.user));
       return { success: true, user: res.user };
     } else {
       return { success: false, message: res.message || "เข้าสู่ระบบไม่สำเร็จ" };
@@ -38,8 +44,8 @@ const Auth = {
     });
 
     if (res.success && res.token) {
-      localStorage.setItem(this.TOKEN_KEY, res.token);
-      localStorage.setItem(this.USER_KEY, JSON.stringify(res.user));
+      sessionStorage.setItem(this.TOKEN_KEY, res.token);
+      sessionStorage.setItem(this.USER_KEY, JSON.stringify(res.user));
       return { success: true, user: res.user };
     } else {
       return { success: false, message: res.message || "เข้าสู่ระบบไม่สำเร็จ" };
@@ -47,17 +53,19 @@ const Auth = {
   },
 
   logout() {
+    sessionStorage.removeItem(this.TOKEN_KEY);
+    sessionStorage.removeItem(this.USER_KEY);
     localStorage.removeItem(this.TOKEN_KEY);
     localStorage.removeItem(this.USER_KEY);
     window.location.reload();
   },
 
   getToken() {
-    return localStorage.getItem(this.TOKEN_KEY);
+    return sessionStorage.getItem(this.TOKEN_KEY);
   },
 
   getUser() {
-    const userStr = localStorage.getItem(this.USER_KEY);
+    const userStr = sessionStorage.getItem(this.USER_KEY);
     try {
       return userStr ? JSON.parse(userStr) : null;
     } catch (e) {
