@@ -82,7 +82,7 @@ function handleRequest(params) {
         return createJsonResponse(handleDeleteUser(params.token, params.userId));
 
       case "logRemoteAction":
-        return createJsonResponse(handleLogRemoteAction(params.token, params.siteId));
+        return createJsonResponse(handleLogRemoteAction(params.token, params.siteId, params.machineName || params.machineId));
 
       case "getGroups":
         return createJsonResponse(handleGetGroups(params.token));
@@ -425,15 +425,23 @@ function handleGetSites(token) {
   if (!session) return { success: false, message: "Session หมดอายุหรือสิทธิ์ไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่" };
 
   const ss = getSpreadsheet();
+  ensureSchemaMigration(ss);
   const sitesSheet = ss.getSheetByName("Sites");
   const permSheet = ss.getSheetByName("Permissions");
   if (!sitesSheet) return { success: false, message: "ไม่พบตาราง Sites" };
 
-  // ตรวจสอบสิทธิ์ของ User จาก Permissions Sheet
+  // ตรวจสอบสิทธิ์ของ User จาก Permissions Sheet (ตัวเลือก A: สิทธิ์ระดับไซต์งาน)
   const userPerms = getUserAllowedSiteIds(session.userId, session.role, permSheet);
   const isSuperAdmin = session.role === "admin" || userPerms.includes("*");
 
   const siteRows = sitesSheet.getDataRange().getValues();
+  if (siteRows.length <= 1) {
+    return { success: true, role: session.role, sites: [] };
+  }
+
+  const headers = siteRows[0].map(h => String(h).trim());
+  const colMachines = headers.indexOf("machines_json");
+
   const sites = [];
 
   for (let i = 1; i < siteRows.length; i++) {
@@ -446,33 +454,94 @@ function handleGetSites(token) {
       continue;
     }
 
-    const rawPassword = String(row[5] || "");
+    const siteName = String(row[1] || "").trim();
+    const defaultIp = String(row[2] || "").trim();
+    const defaultPort = parseInt(row[3], 10) || 3389;
+    const defaultUser = String(row[4] || "").trim();
+    const defaultPass = String(row[5] || "");
+    const groupName = String(row[6] || "General").trim();
+    const description = String(row[7] || "").trim();
+    const updatedAt = row[8];
 
-    // สร้าง Secure Remote Payload สำหรับโปรแกรม Launcher (เข้ารหัส Base64)
-    // เพื่อให้กด Remote ได้ แต่หน้าจอ User ทั่วไปจะไม่เห็นรหัสผ่าน
-    const connectionPayload = Utilities.base64Encode(
-      JSON.stringify({
-        id: siteId,
-        name: row[1],
-        ip: row[2],
-        port: row[3] || 3389,
-        user: row[4],
-        pass: rawPassword
-      })
-    );
+    // อ่าน machines_json ถ้ามี
+    let machines = [];
+    if (colMachines !== -1 && row[colMachines]) {
+      try {
+        const parsed = JSON.parse(String(row[colMachines]));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          machines = parsed;
+        }
+      } catch (err) {
+        Logger.log("Error parsing machines_json for site " + siteId + ": " + err.message);
+      }
+    }
+
+    // Auto-fallback ถ้ายังไม่มี machines ใน JSON ให้แปลงจากคอลัมน์เดิม 1 เครื่อง (Backward Compatibility)
+    if (machines.length === 0) {
+      machines = [
+        {
+          machine_id: "MCH-1",
+          machine_name: "เครื่องหลัก",
+          ip_address: defaultIp,
+          port: defaultPort,
+          username: defaultUser,
+          password: defaultPass,
+          note: ""
+        }
+      ];
+    }
+
+    // Process each machine: build remote_payload and mask password if non-admin
+    const processedMachines = machines.map((m, idx) => {
+      const mId = m.machine_id || ("MCH-" + (idx + 1));
+      const mName = (m.machine_name || ("เครื่องที่ " + (idx + 1))).trim();
+      const mIp = (m.ip_address || defaultIp).trim();
+      const mPort = parseInt(m.port, 10) || defaultPort;
+      const mUser = (m.username || defaultUser).trim();
+      const mPass = String(m.password || "");
+      const mNote = (m.note || "").trim();
+
+      // สร้าง remote_payload ของเครื่องนี้ (สำหรับ 1-Click Zero-Prompt)
+      const connectionPayload = Utilities.base64Encode(
+        JSON.stringify({
+          id: siteId + "_" + mId,
+          site_id: siteId,
+          machine_id: mId,
+          name: siteName + " - " + mName,
+          ip: mIp,
+          port: mPort,
+          user: mUser,
+          pass: mPass
+        })
+      );
+
+      return {
+        machine_id: mId,
+        machine_name: mName,
+        ip_address: mIp,
+        port: mPort,
+        username: mUser,
+        password: session.role === "admin" ? mPass : "••••••••",
+        note: mNote,
+        remote_payload: connectionPayload
+      };
+    });
+
+    // Primary machine for backward compatibility
+    const primaryMachine = processedMachines[0] || {};
 
     sites.push({
       site_id: siteId,
-      site_name: row[1],
-      ip_address: row[2],
-      port: row[3] || 3389,
-      username: row[4],
-      // สำหรับ Admin ส่งรหัสจริงให้แก้ไขได้ สำหรับ User ส่ง masked
-      password: session.role === "admin" ? rawPassword : "••••••••",
-      remote_payload: connectionPayload,
-      group_name: row[6] || "General",
-      description: row[7] || "",
-      updated_at: row[8]
+      site_name: siteName,
+      ip_address: primaryMachine.ip_address || defaultIp,
+      port: primaryMachine.port || defaultPort,
+      username: primaryMachine.username || defaultUser,
+      password: primaryMachine.password || "••••••••",
+      remote_payload: primaryMachine.remote_payload || "",
+      group_name: groupName,
+      description: description,
+      updated_at: updatedAt,
+      machines: processedMachines
     });
   }
 
@@ -489,66 +558,143 @@ function handleSaveSite(token, siteData) {
     return { success: false, message: "ไม่มีสิทธิ์ดำเนินการ ต้องเป็น Admin เท่านั้น" };
   }
 
-  if (!siteData || !siteData.site_name || !siteData.ip_address || !siteData.username) {
-    return { success: false, message: "กรุณาระบุข้อมูลจำเป็น: ชื่อไซต์, IP Address, และ Username" };
+  if (!siteData || !siteData.site_name || siteData.site_name.trim() === "") {
+    return { success: false, message: "กรุณาระบุชื่อไซต์งาน" };
   }
 
   const ss = getSpreadsheet();
+  ensureSchemaMigration(ss);
   const sitesSheet = ss.getSheetByName("Sites");
   const data = sitesSheet.getDataRange().getValues();
-  const now = new Date();
+  const headers = data[0].map(h => String(h).trim());
+  let colMachines = headers.indexOf("machines_json");
+  if (colMachines === -1) {
+    colMachines = headers.length;
+    sitesSheet.getRange(1, colMachines + 1).setValue("machines_json");
+    formatHeaderRow(sitesSheet);
+  }
 
+  const now = new Date();
   let targetRowIndex = -1;
   const isEdit = Boolean(siteData.site_id);
+  let oldMachines = [];
 
   if (isEdit) {
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][0]).trim() === String(siteData.site_id).trim()) {
         targetRowIndex = i + 1;
+        // Parse old machines if available
+        if (colMachines < data[i].length && data[i][colMachines]) {
+          try {
+            oldMachines = JSON.parse(String(data[i][colMachines])) || [];
+          } catch(e) {}
+        }
+        // Fallback old single password
+        if (oldMachines.length === 0) {
+          oldMachines = [{
+            machine_id: "MCH-1",
+            machine_name: "เครื่องหลัก",
+            ip_address: data[i][2],
+            port: data[i][3],
+            username: data[i][4],
+            password: data[i][5],
+            note: ""
+          }];
+        }
         break;
       }
     }
   }
 
-  const port = parseInt(siteData.port, 10) || 3389;
+  // เตรียมรายการ machines
+  let rawMachines = Array.isArray(siteData.machines) && siteData.machines.length > 0
+    ? siteData.machines
+    : [
+        {
+          machine_id: "MCH-1",
+          machine_name: "เครื่องหลัก",
+          ip_address: siteData.ip_address || "",
+          port: parseInt(siteData.port, 10) || 3389,
+          username: siteData.username || "",
+          password: siteData.password || "",
+          note: ""
+        }
+      ];
+
+  // กรองเฉพาะเครื่องที่มีข้อมูล และตรวจจับรหัสผ่านคงเดิม (Self-healing password persistence)
+  const finalMachines = rawMachines.map((m, idx) => {
+    const mId = m.machine_id || ("MCH-" + (Date.now() + idx));
+    let mPass = m.password;
+
+    // ถ้ารหัสผ่านไม่ได้ส่งมาใหม่ หรือเป็น masked ให้คงรหัสผ่านเดิมไว้
+    if (!mPass || mPass === "••••••••") {
+      const existingMatch = oldMachines.find(om => om.machine_id === m.machine_id);
+      if (existingMatch && existingMatch.password) {
+        mPass = existingMatch.password;
+      } else if (idx === 0 && targetRowIndex > 0) {
+        mPass = data[targetRowIndex - 1][5]; // password column
+      } else {
+        mPass = "";
+      }
+    }
+
+    return {
+      machine_id: mId,
+      machine_name: (m.machine_name || ("เครื่องที่ " + (idx + 1))).trim(),
+      ip_address: (m.ip_address || "").trim(),
+      port: parseInt(m.port, 10) || 3389,
+      username: (m.username || "").trim(),
+      password: mPass,
+      note: (m.note || "").trim()
+    };
+  });
+
+  if (finalMachines.length === 0 || !finalMachines[0].ip_address || !finalMachines[0].username) {
+    return { success: false, message: "กรุณาระบุข้อมูลอย่างน้อย 1 เครื่อง (ต้องมี IP Address และ Username)" };
+  }
+
+  const primary = finalMachines[0];
+  const machinesJsonStr = JSON.stringify(finalMachines);
 
   if (targetRowIndex > 0) {
     // แก้ไขข้อมูลเดิม
-    // ถ้ารหัสผ่านไม่ได้ส่งมาใหม่ ให้คงรหัสผ่านเดิมไว้
-    let passToSave = siteData.password;
-    if (!passToSave || passToSave === "••••••••") {
-      passToSave = data[targetRowIndex - 1][5];
-    }
-
     sitesSheet.getRange(targetRowIndex, 2, 1, 8).setValues([[
-      siteData.site_name,
-      siteData.ip_address,
-      port,
-      siteData.username,
-      passToSave,
+      siteData.site_name.trim(),
+      primary.ip_address,
+      primary.port,
+      primary.username,
+      primary.password,
       siteData.group_name || "General",
       siteData.description || "",
       now
     ]]);
 
-    writeAuditLog(session.userId, "SITE_UPDATE", siteData.site_id, "แก้ไขข้อมูลไซต์: " + siteData.site_name);
+    // อัปเดต col machines_json
+    sitesSheet.getRange(targetRowIndex, colMachines + 1).setValue(machinesJsonStr);
+
+    writeAuditLog(session.userId, "SITE_UPDATE", siteData.site_id, "แก้ไขข้อมูลไซต์: " + siteData.site_name + " (" + finalMachines.length + " เครื่อง)");
     return { success: true, message: "บันทึกการแก้ไขไซต์งานสำเร็จ" };
   } else {
     // เพิ่มข้อมูลใหม่
     const newSiteId = "SITE-" + Utilities.formatDate(now, "Asia/Bangkok", "yyyyMMdd-HHmmss");
-    sitesSheet.appendRow([
-      newSiteId,
-      siteData.site_name,
-      siteData.ip_address,
-      port,
-      siteData.username,
-      siteData.password || "",
-      siteData.group_name || "General",
-      siteData.description || "",
-      now
-    ]);
+    
+    // สร้าง row array ให้ตรงกับจำนวนคอลัมน์
+    const totalCols = Math.max(10, colMachines + 1);
+    const newRow = new Array(totalCols).fill("");
+    newRow[0] = newSiteId;
+    newRow[1] = siteData.site_name.trim();
+    newRow[2] = primary.ip_address;
+    newRow[3] = primary.port;
+    newRow[4] = primary.username;
+    newRow[5] = primary.password;
+    newRow[6] = siteData.group_name || "General";
+    newRow[7] = siteData.description || "";
+    newRow[8] = now;
+    newRow[colMachines] = machinesJsonStr;
 
-    writeAuditLog(session.userId, "SITE_CREATE", newSiteId, "เพิ่มไซต์งานใหม่: " + siteData.site_name);
+    sitesSheet.appendRow(newRow);
+
+    writeAuditLog(session.userId, "SITE_CREATE", newSiteId, "เพิ่มไซต์งานใหม่: " + siteData.site_name + " (" + finalMachines.length + " เครื่อง)");
     return { success: true, message: "เพิ่มไซต์งานใหม่สำเร็จ", site_id: newSiteId };
   }
 }
@@ -579,10 +725,11 @@ function handleDeleteSite(token, siteId) {
   return { success: false, message: "ไม่พบรหัสไซต์งานที่ต้องการลบ" };
 }
 
-function handleLogRemoteAction(token, siteId) {
+function handleLogRemoteAction(token, siteId, machineName) {
   const session = verifySessionToken(token);
   if (session) {
-    writeAuditLog(session.userId, "REMOTE_CONNECT", siteId, "เปิดการเชื่อมต่อ Remote Desktop");
+    const detail = machineName ? "เปิดการเชื่อมต่อ Remote Desktop เครื่อง: " + machineName : "เปิดการเชื่อมต่อ Remote Desktop";
+    writeAuditLog(session.userId, "REMOTE_CONNECT", siteId, detail);
   }
   return { success: true };
 }

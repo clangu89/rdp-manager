@@ -331,61 +331,78 @@
   <!-- ================================================================ -->
   <div id="site-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
     <div class="modal-backdrop fixed inset-0 bg-slate-900/60 backdrop-blur-xs" onclick="hideModal('site-modal')"></div>
-    <div class="modal-content relative bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-10">
+    <div class="modal-content relative bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-10 flex flex-col max-h-[90vh]">
       
-      <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-        <h3 id="site-modal-title" class="font-bold text-slate-800 text-base">เพิ่มไซต์งานใหม่</h3>
+      <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+        <div>
+          <h3 id="site-modal-title" class="font-bold text-slate-800 text-base">เพิ่มไซต์งานใหม่</h3>
+          <p class="text-xs text-slate-400">กำหนดข้อมูลไซต์งานและเครื่องคอมพิวเตอร์/เซิร์ฟเวอร์ในไซต์</p>
+        </div>
         <button onclick="hideModal('site-modal')" class="text-slate-400 hover:text-slate-600">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
       </div>
 
-      <form id="site-form" class="p-6 space-y-4">
-        <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อไซต์งาน / ชื่อลูกค้า <span class="text-rose-500">*</span></label>
-          <input type="text" id="form-site-name" required placeholder="เช่น สำนักงานใหญ่ (HQ), สาขาพัทยา" class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none">
-        </div>
+      <form id="site-form" class="overflow-y-auto flex-1 p-6 space-y-5">
+        
+        <!-- ส่วนที่ 1: ข้อมูลไซต์งานหลัก -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+          <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center">
+            <span class="mr-1.5">🏢</span> ข้อมูลไซต์งาน
+          </h4>
 
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-semibold text-slate-600">กลุ่ม / หมวดหมู่ <span class="text-rose-500">*</span></label>
-              <button type="button" onclick="openGroupsModal()" class="admin-only text-[11px] text-blue-600 hover:underline font-medium">+ จัดการกลุ่ม</button>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อไซต์งาน / ชื่อลูกค้า <span class="text-rose-500">*</span></label>
+              <input type="text" id="form-site-name" required placeholder="เช่น สำนักงานใหญ่ (HQ), สาขาพัทยา" class="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
-            <select id="form-site-group" required class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none cursor-pointer">
-              <!-- Options populated dynamically from State.groups -->
-            </select>
+
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-semibold text-slate-600">กลุ่ม / หมวดหมู่ <span class="text-rose-500">*</span></label>
+                <button type="button" onclick="openGroupsModal()" class="admin-only text-[11px] text-blue-600 hover:underline font-medium">+ จัดการกลุ่ม</button>
+              </div>
+              <select id="form-site-group" required class="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer">
+                <!-- Options populated dynamically from State.groups -->
+              </select>
+            </div>
           </div>
+
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Port RDP <span class="text-rose-500">*</span></label>
-            <input type="number" id="form-site-port" required value="3389" class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none font-mono">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">รายละเอียดเพิ่มเติม / หมายเหตุไซต์งาน</label>
+            <input type="text" id="form-site-desc" placeholder="เบอร์โทรติดต่อหน้างาน, ข้อมูลการต่อ VPN ฯลฯ" class="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
           </div>
         </div>
 
+        <!-- ส่วนที่ 2: รายการเครื่องคอมพิวเตอร์ / เซิร์ฟเวอร์ในไซต์นี้ -->
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">IP Address หรือ Domain Name <span class="text-rose-500">*</span></label>
-          <input type="text" id="form-site-ip" required placeholder="เช่น 192.168.1.50 หรือ vpn.customer.com" class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none font-mono">
-        </div>
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center space-x-2">
+              <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center">
+                <span class="mr-1.5">🖥️</span> เครื่องในไซต์งาน
+              </h4>
+              <span id="form-machines-count-badge" class="px-2 py-0.5 text-[11px] font-semibold bg-blue-100 text-blue-800 rounded-full">1 เครื่อง</span>
+            </div>
 
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Username RDP <span class="text-rose-500">*</span></label>
-            <input type="text" id="form-site-user" required placeholder="เช่น Administrator" class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none font-mono">
+            <div class="flex items-center space-x-2">
+              <button type="button" onclick="duplicateLastMachineRow()" class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-colors" title="คัดลอก IP/User จากเครื่องล่าสุดเพื่อเพิ่มเครื่องใหม่ได้อย่างรวดเร็ว">
+                <span class="mr-1">📋</span> คัดลอกเครื่องล่าสุด
+              </button>
+              <button type="button" onclick="addMachineFormRow()" class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors">
+                <span class="mr-1">➕</span> เพิ่มเครื่องใหม่
+              </button>
+            </div>
           </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Password RDP</label>
-            <input type="password" id="form-site-pass" placeholder="••••••••" class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none font-mono">
-          </div>
-        </div>
 
-        <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">รายละเอียดเพิ่มเติม / หมายเหตุ</label>
-          <textarea id="form-site-desc" rows="2" placeholder="เบอร์โทรติดต่อหน้างาน, หมายเหตุการต่อ VPN ฯลฯ" class="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"></textarea>
+          <!-- Dynamic Machine Rows Container -->
+          <div id="machines-form-container" class="space-y-3">
+            <!-- Rendered by app.js -->
+          </div>
         </div>
 
         <div class="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
           <button type="button" onclick="hideModal('site-modal')" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">ยกเลิก</button>
-          <button type="submit" class="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 transition-all">บันทึกข้อมูล</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 transition-all">บันทึกข้อมูลไซต์งาน</button>
         </div>
       </form>
 

@@ -255,6 +255,19 @@ function ensureSchemaMigration(ss) {
     settingsSheet.appendRow(["MAX_PIN_ATTEMPTS", "3", now]);
     Logger.log("✅ Auto-migrated Settings sheet created");
   }
+
+  // 3. ตรวจสอบตาราง Sites ว่ามีคอลัมน์ machines_json หรือยัง
+  const sitesSheet = ss.getSheetByName("Sites");
+  if (sitesSheet && sitesSheet.getLastRow() > 0) {
+    const headers = sitesSheet.getRange(1, 1, 1, sitesSheet.getLastColumn()).getValues()[0];
+    const hasMachinesCol = headers.some(h => String(h).trim() === "machines_json");
+    if (!hasMachinesCol) {
+      const newColIndex = headers.length + 1;
+      sitesSheet.getRange(1, newColIndex).setValue("machines_json");
+      formatHeaderRow(sitesSheet);
+      Logger.log("✅ Auto-migrated Sites sheet: added machines_json column at " + newColIndex);
+    }
+  }
 }
 
 function formatHeaderRow(sheet) {

@@ -54,58 +54,144 @@ const API = {
     return new Promise((resolve) => {
       setTimeout(() => {
         let demoSites = JSON.parse(localStorage.getItem("demo_sites") || "null");
-        if (!demoSites) {
+        if (!demoSites || !demoSites[0]?.machines) {
           demoSites = [
             {
               site_id: "SITE-001",
               site_name: "สำนักงานใหญ่ (HQ Datacenter)",
+              group_name: "Headquarters",
+              description: "เครื่องแม่ข่ายเซิร์ฟเวอร์หลัก กทม.",
+              updated_at: new Date().toISOString(),
+              machines: [
+                {
+                  machine_id: "MCH-01",
+                  machine_name: "App Server (เครื่องหลัก)",
+                  ip_address: "192.168.1.10",
+                  port: 3389,
+                  username: "Administrator",
+                  password: "••••••••",
+                  note: "เซิร์ฟเวอร์โปรแกรมหลัก",
+                  remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
+                    id: "SITE-001_MCH-01",
+                    site_id: "SITE-001",
+                    machine_id: "MCH-01",
+                    name: "สำนักงานใหญ่ (HQ Datacenter) - App Server",
+                    ip: "192.168.1.10",
+                    port: 3389,
+                    user: "Administrator",
+                    pass: "P@ssw0rdHQ2026"
+                  }))))
+                },
+                {
+                  machine_id: "MCH-02",
+                  machine_name: "Database Server (DB)",
+                  ip_address: "192.168.1.11",
+                  port: 3389,
+                  username: "Administrator",
+                  password: "••••••••",
+                  note: "ฐานข้อมูลหลัก",
+                  remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
+                    id: "SITE-001_MCH-02",
+                    site_id: "SITE-001",
+                    machine_id: "MCH-02",
+                    name: "สำนักงานใหญ่ (HQ Datacenter) - Database Server",
+                    ip: "192.168.1.11",
+                    port: 3389,
+                    user: "Administrator",
+                    pass: "P@ssw0rdDB2026"
+                  }))))
+                }
+              ],
               ip_address: "192.168.1.10",
               port: 3389,
               username: "Administrator",
               password: "••••••••",
-              remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
-                ip: "192.168.1.10",
-                port: 3389,
-                user: "Administrator",
-                pass: "P@ssw0rdHQ2026"
-              })))),
-              group_name: "Headquarters",
-              description: "เครื่องแม่ข่ายเซิร์ฟเวอร์หลัก กทม.",
-              updated_at: new Date().toISOString()
+              remote_payload: ""
             },
             {
               site_id: "SITE-002",
               site_name: "สาขาเชียงใหม่ (Branch Chiang Mai)",
+              group_name: "Branch",
+              description: "เครื่องสำรองข้อมูลสาขาภาคเหนือ",
+              updated_at: new Date().toISOString(),
+              machines: [
+                {
+                  machine_id: "MCH-03",
+                  machine_name: "เครื่องหลัก",
+                  ip_address: "10.20.1.5",
+                  port: 3389,
+                  username: "branch_admin",
+                  password: "••••••••",
+                  note: "เครื่องหลักสาขา",
+                  remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
+                    id: "SITE-002_MCH-03",
+                    site_id: "SITE-002",
+                    machine_id: "MCH-03",
+                    name: "สาขาเชียงใหม่ - เครื่องหลัก",
+                    ip: "10.20.1.5",
+                    port: 3389,
+                    user: "branch_admin",
+                    pass: "Cnx#Remote99"
+                  }))))
+                }
+              ],
               ip_address: "10.20.1.5",
               port: 3389,
               username: "branch_admin",
               password: "••••••••",
-              remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
-                ip: "10.20.1.5",
-                port: 3389,
-                user: "branch_admin",
-                pass: "Cnx#Remote99"
-              })))),
-              group_name: "Branch",
-              description: "เครื่องสำรองข้อมูลสาขาภาคเหนือ",
-              updated_at: new Date().toISOString()
+              remote_payload: ""
             },
             {
               site_id: "SITE-003",
               site_name: "ศูนย์กระจายสินค้า บางนา (Warehouse)",
+              group_name: "Warehouse",
+              description: "ระบบควบคุมสต็อกสินค้าและคลัง",
+              updated_at: new Date().toISOString(),
+              machines: [
+                {
+                  machine_id: "MCH-04",
+                  machine_name: "Server สต็อกสินค้า",
+                  ip_address: "10.30.2.100",
+                  port: 3390,
+                  username: "wh_operator",
+                  password: "••••••••",
+                  note: "ระบบคลังสินค้า",
+                  remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
+                    id: "SITE-003_MCH-04",
+                    site_id: "SITE-003",
+                    machine_id: "MCH-04",
+                    name: "ศูนย์กระจายสินค้า บางนา - Server สต็อกสินค้า",
+                    ip: "10.30.2.100",
+                    port: 3390,
+                    user: "wh_operator",
+                    pass: "WhSecure#2026"
+                  }))))
+                },
+                {
+                  machine_id: "MCH-05",
+                  machine_name: "เครื่องชั่งและจ่ายของ",
+                  ip_address: "10.30.2.101",
+                  port: 3389,
+                  username: "wh_dispatch",
+                  password: "••••••••",
+                  note: "จุดจ่ายของหน้าโกดัง",
+                  remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
+                    id: "SITE-003_MCH-05",
+                    site_id: "SITE-003",
+                    machine_id: "MCH-05",
+                    name: "ศูนย์กระจายสินค้า บางนา - จุดจ่ายของ",
+                    ip: "10.30.2.101",
+                    port: 3389,
+                    user: "wh_dispatch",
+                    pass: "Dispatch2026!"
+                  }))))
+                }
+              ],
               ip_address: "10.30.2.100",
               port: 3390,
               username: "wh_operator",
               password: "••••••••",
-              remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
-                ip: "10.30.2.100",
-                port: 3390,
-                user: "wh_operator",
-                pass: "WhSecure#2026"
-              })))),
-              group_name: "Warehouse",
-              description: "ระบบควบคุมสต็อกสินค้าและคลัง",
-              updated_at: new Date().toISOString()
+              remote_payload: ""
             }
           ];
           localStorage.setItem("demo_sites", JSON.stringify(demoSites));
@@ -215,26 +301,65 @@ const API = {
             break;
 
           case "saveSite":
+            const sData = payload.siteData;
+            const existingIdx = demoSites.findIndex(s => s.site_id === sData.site_id);
+            const existingSite = existingIdx >= 0 ? demoSites[existingIdx] : null;
+
+            const machinesToSave = (Array.isArray(sData.machines) && sData.machines.length > 0)
+              ? sData.machines.map((m, mIdx) => {
+                  let pass = m.password;
+                  if (!pass || pass === "••••••••") {
+                    const existingM = existingSite?.machines?.find(em => em.machine_id === m.machine_id);
+                    pass = existingM?.password || "demoPass123";
+                  }
+                  return {
+                    machine_id: m.machine_id || ("MCH-" + Date.now() + mIdx),
+                    machine_name: m.machine_name || `เครื่องที่ ${mIdx + 1}`,
+                    ip_address: m.ip_address || "192.168.1.1",
+                    port: parseInt(m.port) || 3389,
+                    username: m.username || "Administrator",
+                    password: pass,
+                    note: m.note || "",
+                    remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
+                      id: (sData.site_id || "SITE-DEMO") + "_" + (m.machine_id || mIdx),
+                      name: `${sData.site_name} - ${m.machine_name}`,
+                      ip: m.ip_address,
+                      port: parseInt(m.port) || 3389,
+                      user: m.username,
+                      pass: pass
+                    }))))
+                  };
+                })
+              : [
+                  {
+                    machine_id: "MCH-01",
+                    machine_name: "เครื่องหลัก",
+                    ip_address: sData.ip_address || "192.168.1.1",
+                    port: parseInt(sData.port) || 3389,
+                    username: sData.username || "Administrator",
+                    password: sData.password || "••••••••",
+                    note: "",
+                    remote_payload: ""
+                  }
+                ];
+
+            const primaryM = machinesToSave[0];
             const newSite = {
-              site_id: payload.siteData.site_id || "SITE-" + Date.now(),
-              site_name: payload.siteData.site_name,
-              ip_address: payload.siteData.ip_address,
-              port: parseInt(payload.siteData.port) || 3389,
-              username: payload.siteData.username,
-              password: payload.siteData.password || "••••••••",
-              remote_payload: btoa(unescape(encodeURIComponent(JSON.stringify({
-                ip: payload.siteData.ip_address,
-                port: parseInt(payload.siteData.port) || 3389,
-                user: payload.siteData.username,
-                pass: payload.siteData.password
-              })))),
-              group_name: payload.siteData.group_name || "General",
-              description: payload.siteData.description || "",
-              updated_at: new Date().toISOString()
+              site_id: sData.site_id || "SITE-" + Date.now(),
+              site_name: sData.site_name,
+              group_name: sData.group_name || "General",
+              description: sData.description || "",
+              updated_at: new Date().toISOString(),
+              machines: machinesToSave,
+              ip_address: primaryM.ip_address,
+              port: primaryM.port,
+              username: primaryM.username,
+              password: primaryM.password,
+              remote_payload: primaryM.remote_payload
             };
-            const idx = demoSites.findIndex(s => s.site_id === newSite.site_id);
-            if (idx >= 0) {
-              demoSites[idx] = newSite;
+
+            if (existingIdx >= 0) {
+              demoSites[existingIdx] = newSite;
             } else {
               demoSites.push(newSite);
             }

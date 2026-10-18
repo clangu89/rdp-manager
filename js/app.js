@@ -14,6 +14,7 @@ const State = {
   selectedGroup: "ALL",
   viewMode: localStorage.getItem("rdp_view_mode") || "grid",
   editingSiteId: null,
+  editingSiteMachines: [],
   editingGroupId: null,
   editingUserId: null,
   isLoading: false,
@@ -290,19 +291,29 @@ function updateGroupFilters() {
 
 function renderSites() {
   const container = document.getElementById("sites-container");
-  const filtered = State.sites.filter(site => {
-    const matchesSearch = 
-      site.site_name.toLowerCase().includes(State.searchTerm.toLowerCase()) ||
-      site.ip_address.toLowerCase().includes(State.searchTerm.toLowerCase()) ||
-      (site.username && site.username.toLowerCase().includes(State.searchTerm.toLowerCase())) ||
-      (site.description && site.description.toLowerCase().includes(State.searchTerm.toLowerCase()));
+  const term = State.searchTerm.toLowerCase().trim();
 
+  const filtered = State.sites.filter(site => {
+    const matchesSite = 
+      site.site_name.toLowerCase().includes(term) ||
+      (site.description && site.description.toLowerCase().includes(term)) ||
+      (site.group_name && site.group_name.toLowerCase().includes(term));
+
+    const matchesMachine = (site.machines || []).some(m => 
+      (m.machine_name && m.machine_name.toLowerCase().includes(term)) ||
+      (m.ip_address && m.ip_address.toLowerCase().includes(term)) ||
+      (m.username && m.username.toLowerCase().includes(term)) ||
+      (m.note && m.note.toLowerCase().includes(term))
+    );
+
+    const matchesSearch = !term || matchesSite || matchesMachine;
     const matchesGroup = State.selectedGroup === "ALL" || site.group_name === State.selectedGroup;
 
     return matchesSearch && matchesGroup;
   });
 
-  document.getElementById("sites-count-badge").textContent = `${filtered.length} ไซต์`;
+  const totalMachines = filtered.reduce((sum, s) => sum + (s.machines ? s.machines.length : 1), 0);
+  document.getElementById("sites-count-badge").textContent = `${filtered.length} ไซต์ (${totalMachines} เครื่อง)`;
 
   if (filtered.length === 0) {
     container.innerHTML = `
@@ -321,15 +332,33 @@ function renderSites() {
 
   if (State.viewMode === "grid") {
     container.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5";
-    container.innerHTML = filtered.map(site => `
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between group">
+    container.innerHTML = filtered.map(site => {
+      const machines = (site.machines && site.machines.length > 0) ? site.machines : [
+        {
+          machine_id: "MCH-1",
+          machine_name: "เครื่องหลัก",
+          ip_address: site.ip_address,
+          port: site.port || 3389,
+          username: site.username,
+          password: site.password,
+          note: ""
+        }
+      ];
+
+      return `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between group">
         <div class="p-5">
           <!-- Card Header -->
-          <div class="flex items-start justify-between gap-3 mb-3">
+          <div class="flex items-start justify-between gap-3 mb-2.5">
             <div>
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 mb-1.5">
-                ${site.group_name || 'General'}
-              </span>
+              <div class="flex items-center space-x-1.5 mb-1.5">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  ${site.group_name || 'General'}
+                </span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                  🖥️ ${machines.length} เครื่อง
+                </span>
+              </div>
               <h3 class="text-base font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
                 ${site.site_name}
               </h3>
@@ -337,10 +366,10 @@ function renderSites() {
             
             ${isAdmin ? `
               <div class="flex items-center space-x-1">
-                <button onclick="openSiteModal('${site.site_id}')" class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="แก้ไข">
+                <button onclick="openSiteModal('${site.site_id}')" class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="แก้ไขไซต์">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                 </button>
-                <button onclick="confirmDeleteSite('${site.site_id}', '${site.site_name}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="ลบ">
+                <button onclick="confirmDeleteSite('${site.site_id}', '${site.site_name}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="ลบไซต์">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                 </button>
               </div>
@@ -348,54 +377,56 @@ function renderSites() {
           </div>
 
           <!-- Description if exists -->
-          ${site.description ? `<p class="text-xs text-slate-500 mb-4 line-clamp-2">${site.description}</p>` : ''}
+          ${site.description ? `<p class="text-xs text-slate-500 mb-3 line-clamp-2">${site.description}</p>` : ''}
 
-          <!-- Connection Details -->
-          <div class="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-100 text-xs font-mono">
-            <!-- IP & Port -->
-            <div class="flex items-center justify-between">
-              <span class="text-slate-400 font-sans">IP / Port:</span>
-              <div class="flex items-center space-x-1.5">
-                <span class="font-semibold text-slate-700">${site.ip_address}:${site.port || 3389}</span>
-                <button onclick="copyToClipboard('${site.ip_address}:${site.port || 3389}', 'คัดลอก IP')" class="text-slate-400 hover:text-slate-700" title="คัดลอก IP">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+          <!-- Machines List inside Card (Option 1: Stacked with 1-Click Remote per machine) -->
+          <div class="space-y-2.5 max-h-80 overflow-y-auto pr-0.5">
+            ${machines.map(m => `
+              <div class="bg-slate-50/90 hover:bg-blue-50/40 p-3 rounded-xl border border-slate-200/80 hover:border-blue-200 transition-all flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="font-bold text-xs text-slate-800 flex items-center">
+                      <span class="w-2 h-2 rounded-full bg-emerald-500 mr-1.5"></span>
+                      ${m.machine_name}
+                    </span>
+                    ${m.note ? `<span class="text-[10px] text-slate-400 truncate max-w-[120px] bg-white px-1.5 py-0.5 rounded border border-slate-100" title="${m.note}">${m.note}</span>` : ''}
+                  </div>
+
+                  <div class="space-y-1 text-xs font-mono">
+                    <div class="flex items-center justify-between">
+                      <span class="text-slate-400 font-sans text-[11px]">IP:</span>
+                      <div class="flex items-center space-x-1">
+                        <span class="font-semibold text-slate-700">${m.ip_address}:${m.port || 3389}</span>
+                        <button onclick="copyToClipboard('${m.ip_address}:${m.port || 3389}', 'คัดลอก IP')" class="text-slate-400 hover:text-slate-700 p-0.5" title="คัดลอก IP">
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                      <span class="text-slate-400 font-sans text-[11px]">User:</span>
+                      <div class="flex items-center space-x-1">
+                        <span class="text-slate-700">${m.username}</span>
+                        <button onclick="copyToClipboard('${m.username}', 'คัดลอก Username')" class="text-slate-400 hover:text-slate-700 p-0.5" title="คัดลอก Username">
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 1-Click Remote for this Machine -->
+                <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse mt-2.5 w-full py-1.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold rounded-lg shadow-2xs active:scale-[0.98] transition-all flex items-center justify-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                  <span>Remote (${m.machine_name})</span>
                 </button>
               </div>
-            </div>
-
-            <!-- Username -->
-            <div class="flex items-center justify-between">
-              <span class="text-slate-400 font-sans">User:</span>
-              <div class="flex items-center space-x-1.5">
-                <span class="text-slate-700">${site.username}</span>
-                <button onclick="copyToClipboard('${site.username}', 'คัดลอก Username')" class="text-slate-400 hover:text-slate-700" title="คัดลอก Username">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                </button>
-              </div>
-            </div>
-
-            <!-- Password Status (Protected from regular users) -->
-            <div class="flex items-center justify-between">
-              <span class="text-slate-400 font-sans">Password:</span>
-              <span class="text-slate-400 tracking-widest">••••••••</span>
-            </div>
+            `).join("")}
           </div>
-        </div>
-
-        <!-- Action Button -->
-        <div class="px-5 py-3.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between gap-3">
-          <div class="text-[11px] text-slate-400 flex items-center">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block mr-1.5 animate-pulse"></span>
-            พร้อมเชื่อมต่อ
-          </div>
-          
-          <button onclick="triggerRemote('${site.site_id}')" class="btn-remote-pulse inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all">
-            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-            Remote
-          </button>
         </div>
       </div>
-    `).join("");
+      `;
+    }).join("");
   } else {
     // Table View
     container.className = "bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden";
@@ -406,52 +437,78 @@ function renderSites() {
             <tr>
               <th class="px-5 py-3.5">ชื่อไซต์งาน</th>
               <th class="px-5 py-3.5">กลุ่ม</th>
-              <th class="px-5 py-3.5">IP Address : Port</th>
-              <th class="px-5 py-3.5">Username</th>
-              <th class="px-5 py-3.5 text-right">ดำเนินการ</th>
+              <th class="px-5 py-3.5">รายการเครื่องในไซต์</th>
+              <th class="px-5 py-3.5 text-right">จัดการไซต์</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            ${filtered.map(site => `
+            ${filtered.map(site => {
+              const machines = (site.machines && site.machines.length > 0) ? site.machines : [
+                {
+                  machine_id: "MCH-1",
+                  machine_name: "เครื่องหลัก",
+                  ip_address: site.ip_address,
+                  port: site.port || 3389,
+                  username: site.username,
+                  password: site.password,
+                  note: ""
+                }
+              ];
+
+              return `
               <tr class="hover:bg-slate-50/70 transition-colors">
-                <td class="px-5 py-4">
+                <td class="px-5 py-4 align-top">
                   <div class="font-bold text-slate-800">${site.site_name}</div>
+                  <div class="text-xs text-blue-600 font-semibold mt-0.5">🖥️ ${machines.length} เครื่อง</div>
                   ${site.description ? `<div class="text-xs text-slate-400 mt-0.5">${site.description}</div>` : ''}
                 </td>
-                <td class="px-5 py-4">
+                <td class="px-5 py-4 align-top">
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
                     ${site.group_name || 'General'}
                   </span>
                 </td>
-                <td class="px-5 py-4 font-mono text-xs text-slate-700">
-                  <div class="flex items-center space-x-1.5">
-                    <span>${site.ip_address}:${site.port || 3389}</span>
-                    <button onclick="copyToClipboard('${site.ip_address}:${site.port || 3389}', 'คัดลอก IP')" class="text-slate-400 hover:text-slate-700">
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                    </button>
+                <td class="px-5 py-4">
+                  <div class="space-y-2">
+                    ${machines.map(m => `
+                      <div class="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 gap-2 text-xs">
+                        <div>
+                          <span class="font-bold text-slate-800">${m.machine_name}</span>
+                          ${m.note ? `<span class="ml-1 text-[11px] text-slate-400">(${m.note})</span>` : ''}
+                          <div class="font-mono text-slate-600 text-[11px] flex items-center space-x-1.5 mt-0.5">
+                            <span>${m.ip_address}:${m.port || 3389}</span>
+                            <button onclick="copyToClipboard('${m.ip_address}:${m.port || 3389}', 'คัดลอก IP')" class="text-slate-400 hover:text-slate-700">
+                              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            </button>
+                            <span class="text-slate-300">|</span>
+                            <span>${m.username}</span>
+                            <button onclick="copyToClipboard('${m.username}', 'คัดลอก Username')" class="text-slate-400 hover:text-slate-700">
+                              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            </button>
+                          </div>
+                        </div>
+                        <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-2xs whitespace-nowrap self-start sm:self-auto">
+                          <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                          Remote
+                        </button>
+                      </div>
+                    `).join("")}
                   </div>
                 </td>
-                <td class="px-5 py-4 font-mono text-xs text-slate-700">
-                  ${site.username}
-                </td>
-                <td class="px-5 py-4 text-right whitespace-nowrap">
-                  <div class="flex items-center justify-end space-x-2">
-                    <button onclick="triggerRemote('${site.site_id}')" class="btn-remote-pulse inline-flex items-center px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm">
-                      <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                      Remote
-                    </button>
-                    ${isAdmin ? `
-                      <button onclick="openSiteModal('${site.site_id}')" class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="แก้ไข">
+                <td class="px-5 py-4 text-right whitespace-nowrap align-top">
+                  ${isAdmin ? `
+                    <div class="flex items-center justify-end space-x-1">
+                      <button onclick="openSiteModal('${site.site_id}')" class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="แก้ไขไซต์">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                       </button>
-                      <button onclick="confirmDeleteSite('${site.site_id}', '${site.site_name}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg" title="ลบ">
+                      <button onclick="confirmDeleteSite('${site.site_id}', '${site.site_name}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg" title="ลบไซต์">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                       </button>
-                    ` : ''}
-                  </div>
+                    </div>
+                  ` : ''}
                 </td>
               </tr>
-            `).join("")}
+              `;
+            }).join("")}
           </tbody>
         </table>
       </div>
@@ -459,10 +516,13 @@ function renderSites() {
   }
 }
 
-function triggerRemote(siteId) {
+function triggerRemote(siteId, machineId = null) {
   const site = State.sites.find(s => s.site_id === siteId);
   if (!site) return;
-  RdpLauncher.connect(site);
+  const machine = (site.machines && site.machines.length > 0)
+    ? (site.machines.find(m => m.machine_id === machineId) || site.machines[0])
+    : null;
+  RdpLauncher.connect(site, machine);
 }
 
 // --------------------------------------------------------------------
@@ -472,7 +532,7 @@ function triggerRemote(siteId) {
 function openSiteModal(siteId = null) {
   State.editingSiteId = siteId;
   const form = document.getElementById("site-form");
-  form.reset();
+  if (form) form.reset();
 
   const titleEl = document.getElementById("site-modal-title");
 
@@ -482,38 +542,252 @@ function openSiteModal(siteId = null) {
     if (site) {
       document.getElementById("form-site-name").value = site.site_name || "";
       populateSiteGroupDropdown(site.group_name || "");
-      document.getElementById("form-site-ip").value = site.ip_address || "";
-      document.getElementById("form-site-port").value = site.port || 3389;
-      document.getElementById("form-site-user").value = site.username || "";
-      document.getElementById("form-site-pass").value = site.password || "";
       document.getElementById("form-site-desc").value = site.description || "";
+      
+      // Load machines
+      if (Array.isArray(site.machines) && site.machines.length > 0) {
+        State.editingSiteMachines = JSON.parse(JSON.stringify(site.machines));
+      } else {
+        State.editingSiteMachines = [
+          {
+            machine_id: "MCH-1",
+            machine_name: "เครื่องหลัก",
+            ip_address: site.ip_address || "",
+            port: site.port || 3389,
+            username: site.username || "",
+            password: site.password || "",
+            note: ""
+          }
+        ];
+      }
     }
   } else {
     titleEl.textContent = "เพิ่มไซต์งานใหม่";
     populateSiteGroupDropdown(State.groups.length > 0 ? State.groups[0].group_name : "");
-    document.getElementById("form-site-port").value = "3389";
+    document.getElementById("form-site-name").value = "";
+    document.getElementById("form-site-desc").value = "";
+    State.editingSiteMachines = [
+      {
+        machine_id: "MCH-" + Date.now(),
+        machine_name: "เครื่องหลัก",
+        ip_address: "",
+        port: 3389,
+        username: "Administrator",
+        password: "",
+        note: ""
+      }
+    ];
   }
 
+  renderMachineFormRows();
   showModal("site-modal");
+}
+
+function syncMachineFormValuesFromDom() {
+  const container = document.getElementById("machines-form-container");
+  if (!container) return;
+
+  const rows = container.querySelectorAll(".machine-form-row");
+  rows.forEach((row, idx) => {
+    if (State.editingSiteMachines[idx]) {
+      const nameInput = row.querySelector(".mch-name");
+      const ipInput = row.querySelector(".mch-ip");
+      const portInput = row.querySelector(".mch-port");
+      const userInput = row.querySelector(".mch-user");
+      const passInput = row.querySelector(".mch-pass");
+      const noteInput = row.querySelector(".mch-note");
+
+      if (nameInput) State.editingSiteMachines[idx].machine_name = nameInput.value.trim();
+      if (ipInput) State.editingSiteMachines[idx].ip_address = ipInput.value.trim();
+      if (portInput) State.editingSiteMachines[idx].port = parseInt(portInput.value.trim(), 10) || 3389;
+      if (userInput) State.editingSiteMachines[idx].username = userInput.value.trim();
+      if (passInput && passInput.value) State.editingSiteMachines[idx].password = passInput.value;
+      if (noteInput) State.editingSiteMachines[idx].note = noteInput.value.trim();
+    }
+  });
+}
+
+function renderMachineFormRows() {
+  const container = document.getElementById("machines-form-container");
+  if (!container) return;
+
+  const countBadge = document.getElementById("form-machines-count-badge");
+  if (countBadge) {
+    countBadge.textContent = `${State.editingSiteMachines.length} เครื่อง`;
+  }
+
+  container.innerHTML = State.editingSiteMachines.map((m, idx) => `
+    <div class="machine-form-row bg-slate-50 p-3.5 rounded-2xl border border-slate-200 transition-all" data-index="${idx}">
+      
+      <!-- Row Header -->
+      <div class="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-200/80">
+        <div class="flex items-center space-x-2">
+          <span class="w-5 h-5 rounded-md bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0">
+            ${idx + 1}
+          </span>
+          <span class="text-xs font-bold text-slate-700">เครื่องที่ ${idx + 1}</span>
+          <span class="text-[10px] font-mono text-slate-400">(${m.machine_id || 'NEW'})</span>
+        </div>
+
+        <div class="flex items-center space-x-1.5">
+          ${State.editingSiteMachines.length > 1 ? `
+            <button type="button" onclick="removeMachineFormRow(${idx})" class="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors" title="ลบเครื่องนี้">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            </button>
+          ` : `
+            <span class="text-[10px] text-slate-400 italic">เครื่องหลัก</span>
+          `}
+        </div>
+      </div>
+
+      <!-- Input Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5 text-xs">
+        
+        <!-- ชื่อเครื่อง / หน้าที่ -->
+        <div class="md:col-span-4">
+          <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">ชื่อเครื่อง / หน้าที่ <span class="text-rose-500">*</span></label>
+          <input type="text" required placeholder="เช่น App Server, DB Server, POS-01" value="${escapeHtml(m.machine_name || '')}" class="mch-name w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <!-- IP Address / Domain -->
+        <div class="md:col-span-5">
+          <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">IP Address หรือ Domain <span class="text-rose-500">*</span></label>
+          <input type="text" required placeholder="เช่น 192.168.1.10" value="${escapeHtml(m.ip_address || '')}" class="mch-ip w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+        </div>
+
+        <!-- Port -->
+        <div class="md:col-span-3">
+          <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Port <span class="text-rose-500">*</span></label>
+          <input type="number" required value="${m.port || 3389}" class="mch-port w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+        </div>
+
+        <!-- Username -->
+        <div class="md:col-span-4">
+          <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Username RDP <span class="text-rose-500">*</span></label>
+          <input type="text" required placeholder="Administrator" value="${escapeHtml(m.username || '')}" class="mch-user w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+        </div>
+
+        <!-- Password -->
+        <div class="md:col-span-4">
+          <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">Password RDP</label>
+          <input type="password" placeholder="${m.password ? '•••••••• (คงเดิม)' : 'ระบุรหัสผ่าน'}" value="" class="mch-pass w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 font-mono">
+        </div>
+
+        <!-- หมายเหตุเครื่อง -->
+        <div class="md:col-span-4">
+          <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">หมายเหตุเครื่อง</label>
+          <input type="text" placeholder="เช่น SQL Server, สำรอง" value="${escapeHtml(m.note || '')}" class="mch-note w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+
+      </div>
+
+    </div>
+  `).join("");
+}
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function addMachineFormRow(prefill = null) {
+  syncMachineFormValuesFromDom();
+  const nextNum = State.editingSiteMachines.length + 1;
+  const newMachine = prefill ? { ...prefill, machine_id: "MCH-" + Date.now() } : {
+    machine_id: "MCH-" + Date.now(),
+    machine_name: `เครื่องที่ ${nextNum}`,
+    ip_address: "",
+    port: 3389,
+    username: "Administrator",
+    password: "",
+    note: ""
+  };
+  State.editingSiteMachines.push(newMachine);
+  renderMachineFormRows();
+  
+  // Scroll to bottom
+  const container = document.getElementById("machines-form-container");
+  if (container && container.lastElementChild) {
+    container.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function duplicateLastMachineRow() {
+  syncMachineFormValuesFromDom();
+  if (State.editingSiteMachines.length === 0) {
+    addMachineFormRow();
+    return;
+  }
+  const last = State.editingSiteMachines[State.editingSiteMachines.length - 1];
+  const nextNum = State.editingSiteMachines.length + 1;
+  const cloned = {
+    machine_id: "MCH-" + Date.now(),
+    machine_name: `เครื่องที่ ${nextNum}`,
+    ip_address: last.ip_address || "",
+    port: last.port || 3389,
+    username: last.username || "Administrator",
+    password: last.password || "",
+    note: last.note || ""
+  };
+  State.editingSiteMachines.push(cloned);
+  renderMachineFormRows();
+  Toast.show("📋 คัดลอกข้อมูลเครื่องล่าสุดเรียบร้อย", "info", 1500);
+
+  const container = document.getElementById("machines-form-container");
+  if (container && container.lastElementChild) {
+    container.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function removeMachineFormRow(index) {
+  if (State.editingSiteMachines.length <= 1) {
+    Toast.show("ไซต์งานต้องมีอย่างน้อย 1 เครื่อง", "warning");
+    return;
+  }
+  syncMachineFormValuesFromDom();
+  State.editingSiteMachines.splice(index, 1);
+  renderMachineFormRows();
 }
 
 async function handleSiteSubmit(e) {
   e.preventDefault();
-  const siteData = {
-    site_id: State.editingSiteId,
-    site_name: document.getElementById("form-site-name").value.trim(),
-    group_name: document.getElementById("form-site-group").value.trim(),
-    ip_address: document.getElementById("form-site-ip").value.trim(),
-    port: parseInt(document.getElementById("form-site-port").value.trim(), 10) || 3389,
-    username: document.getElementById("form-site-user").value.trim(),
-    password: document.getElementById("form-site-pass").value,
-    description: document.getElementById("form-site-desc").value.trim()
-  };
+  syncMachineFormValuesFromDom();
 
-  if (!siteData.site_name || !siteData.ip_address || !siteData.username || !siteData.group_name) {
-    Toast.show("กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน รวมทั้งเลือกกลุ่มงาน", "warning");
+  const siteName = document.getElementById("form-site-name").value.trim();
+  const groupName = document.getElementById("form-site-group").value.trim();
+  const desc = document.getElementById("form-site-desc").value.trim();
+
+  if (!siteName || !groupName) {
+    Toast.show("กรุณาระบุชื่อไซต์งานและเลือกกลุ่มงาน", "warning");
     return;
   }
+
+  if (State.editingSiteMachines.length === 0) {
+    Toast.show("กรุณาระบุข้อมูลอย่างน้อย 1 เครื่อง", "warning");
+    return;
+  }
+
+  // Validate each machine
+  for (let i = 0; i < State.editingSiteMachines.length; i++) {
+    const m = State.editingSiteMachines[i];
+    if (!m.machine_name || !m.ip_address || !m.username) {
+      Toast.show(`กรุณากรอกชื่อเครื่อง, IP Address และ Username ของเครื่องที่ ${i + 1} ให้ครบถ้วน`, "warning");
+      return;
+    }
+  }
+
+  const siteData = {
+    site_id: State.editingSiteId,
+    site_name: siteName,
+    group_name: groupName,
+    description: desc,
+    machines: State.editingSiteMachines
+  };
 
   showLoading(true);
   try {

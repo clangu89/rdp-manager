@@ -8,37 +8,50 @@
 
 const RdpLauncher = {
   // ฟังก์ชันหลักในการเปิด Remote Desktop
-  async connect(site) {
+  async connect(site, machine = null) {
+    const targetMachine = machine || (site.machines && site.machines.length > 0 ? site.machines[0] : null) || {
+      machine_id: "MCH-1",
+      machine_name: site.site_name,
+      ip_address: site.ip_address,
+      port: site.port || 3389,
+      username: site.username,
+      password: site.password,
+      remote_payload: site.remote_payload
+    };
+
     const mode = CONFIG.getConnectionMode(); // 'protocol' หรือ 'rdp_file'
 
     // บันทึก Audit Log ผ่าน API ในเบื้องหลัง
     if (Auth.isLoggedIn()) {
       API.call("logRemoteAction", {
         token: Auth.getToken(),
-        siteId: site.site_id
+        siteId: site.site_id,
+        machineName: targetMachine.machine_name
       });
     }
 
     if (mode === "protocol") {
-      this.launchViaProtocol(site);
+      this.launchViaProtocol(site, targetMachine);
     } else {
-      this.launchViaRdpFile(site);
+      this.launchViaRdpFile(site, targetMachine);
     }
   },
 
   // 1. เปิดผ่าน Custom Protocol (rdpconnect://) - Zero Prompt
-  launchViaProtocol(site) {
-    let payload = site.remote_payload;
+  launchViaProtocol(site, machine) {
+    let payload = machine.remote_payload;
 
-    // ถ้าไม่มี remote_payload สำเร็จรูป ให้สร้างเองจากข้อมูลไซต์
+    // ถ้าไม่มี remote_payload สำเร็จรูป ให้สร้างเองจากข้อมูลเครื่อง
     if (!payload) {
       const data = {
-        id: site.site_id,
-        name: site.site_name,
-        ip: site.ip_address,
-        port: site.port || 3389,
-        user: site.username,
-        pass: site.password || ""
+        id: site.site_id + "_" + (machine.machine_id || "MCH-1"),
+        site_id: site.site_id,
+        machine_id: machine.machine_id,
+        name: `${site.site_name} - ${machine.machine_name || "Machine"}`,
+        ip: machine.ip_address,
+        port: machine.port || 3389,
+        user: machine.username,
+        pass: machine.password || ""
       };
       payload = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
     }
@@ -52,13 +65,14 @@ const RdpLauncher = {
     link.click();
     document.body.removeChild(link);
 
-    Toast.show(`⚡ กำลังส่งคำสั่งเชื่อมต่อ Windows Remote Desktop ไปยัง "${site.site_name}"...`, "success", 4000);
+    const targetLabel = machine.machine_name ? `${site.site_name} (${machine.machine_name})` : site.site_name;
+    Toast.show(`⚡ กำลังส่งคำสั่งเชื่อมต่อ Windows Remote Desktop ไปยัง "${targetLabel}"...`, "success", 4000);
   },
 
   // 2. สร้างและดาวน์โหลดไฟล์ .rdp มาตรฐาน (Fallback)
-  launchViaRdpFile(site) {
-    const fullAddress = `${site.ip_address}:${site.port || 3389}`;
-    const username = site.username || "";
+  launchViaRdpFile(site, machine) {
+    const fullAddress = `${machine.ip_address}:${machine.port || 3389}`;
+    const username = machine.username || "";
 
     const rdpContent = [
       "screen mode id:i:2",
@@ -86,7 +100,8 @@ const RdpLauncher = {
     const blob = new Blob([rdpContent], { type: "application/x-rdp" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const safeName = (site.site_name || "remote").replace(/[^a-zA-Z0-9_\u0E00-\u0E7F]/g, "_");
+    const rawSafeName = `${site.site_name || "remote"}_${machine.machine_name || "machine"}`;
+    const safeName = rawSafeName.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F]/g, "_");
     a.href = url;
     a.download = `${safeName}.rdp`;
     document.body.appendChild(a);
@@ -94,7 +109,8 @@ const RdpLauncher = {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    Toast.show(`📁 ดาวน์โหลดไฟล์การเชื่อมต่อสำหรับ "${site.site_name}" เรียบร้อยแล้ว`, "info", 4000);
+    const targetLabel = machine.machine_name ? `${site.site_name} (${machine.machine_name})` : site.site_name;
+    Toast.show(`📁 ดาวน์โหลดไฟล์การเชื่อมต่อสำหรับ "${targetLabel}" เรียบร้อยแล้ว`, "info", 4000);
   },
 
   // สร้างและดาวน์โหลดไฟล์ install-rdp-protocol.bat ให้ผู้ใช้งานติดตั้งได้จากหน้าเว็บทันที
