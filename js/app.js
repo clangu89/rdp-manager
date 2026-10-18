@@ -559,6 +559,18 @@ function renderSites() {
 // Real-time Presence & Heartbeat Management
 // --------------------------------------------------------------------
 
+function formatActiveRemoteLabel(ar) {
+  if (!ar) return "";
+  const siteObj = (State.sites || []).find(s => String(s.site_id) === String(ar.siteId));
+  const sName = (ar.siteName || siteObj?.site_name || "").trim();
+  const mName = (ar.machineName || "").trim();
+
+  if (sName && mName) {
+    return sName.toLowerCase() === mName.toLowerCase() ? sName : `${sName}/${mName}`;
+  }
+  return sName || mName || "เครื่องรีโมต";
+}
+
 function getActiveRemoteForMachine(siteId, machineId) {
   if (!State.onlineUsers || State.onlineUsers.length === 0) return null;
   const now = Date.now();
@@ -604,6 +616,9 @@ async function sendPresenceHeartbeat() {
 function updateOnlineUsers(users) {
   State.onlineUsers = Array.isArray(users) ? users : [];
   renderOnlineUsersUI();
+  if (State.sites && State.sites.length > 0 && !State.isLoading) {
+    renderSites();
+  }
 }
 
 function renderOnlineUsersUI() {
@@ -635,11 +650,11 @@ function renderOnlineUsersUI() {
         let remoteBadge = "";
         if (u.active_remote) {
           const ar = u.active_remote;
-          const label = ar.machineName || ar.siteName || "เครื่องรีโมต";
+          const label = formatActiveRemoteLabel(ar);
           remoteBadge = `
-            <div class="mt-1 flex items-center space-x-1 text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
-              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-              <span class="font-medium truncate max-w-[200px]">🖥️ กำลัง Remote: ${escapeHtml(label)}</span>
+            <div class="mt-1 flex items-center space-x-1 text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80" title="กำลัง Remote: ${escapeHtml(label)}">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
+              <span class="font-medium truncate max-w-[220px]">🖥️ กำลัง Remote: ${escapeHtml(label)}</span>
             </div>
           `;
         }
@@ -1051,10 +1066,12 @@ function renderUsersTable() {
   container.innerHTML = State.users.map(u => {
     const isSelf = (currentUserId && String(u.user_id) === String(currentUserId)) ||
                    (currentUsername && u.username && currentUsername.toLowerCase() === u.username.toLowerCase());
-    const isOnline = (State.onlineUsers || []).some(ou => 
+    const onlineUserObj = (State.onlineUsers || []).find(ou => 
       String(ou.user_id) === String(u.user_id) || 
       (ou.username && u.username && ou.username.toLowerCase() === u.username.toLowerCase())
     );
+    const isOnline = Boolean(onlineUserObj);
+    const activeRemote = onlineUserObj?.active_remote;
 
     const permText = u.role === "admin" || (u.allowed_sites && u.allowed_sites.includes("*"))
       ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">เห็นทุกไซต์งาน (All)</span>`
@@ -1064,9 +1081,16 @@ function renderUsersTable() {
       <tr class="hover:bg-slate-50 transition-colors">
         <td class="px-3 py-2.5 text-center whitespace-nowrap">
           ${isOnline 
-            ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>ออนไลน์
-               </span>`
+            ? `<div>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>ออนไลน์
+                </span>
+                ${activeRemote ? `
+                  <div class="mt-1 text-[10px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 truncate max-w-[150px] mx-auto font-medium" title="กำลัง Remote: ${escapeHtml(formatActiveRemoteLabel(activeRemote))}">
+                    🖥️ ${escapeHtml(formatActiveRemoteLabel(activeRemote))}
+                  </div>
+                ` : ''}
+               </div>`
             : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-normal text-slate-400 bg-slate-50 border border-slate-200">
                 <span class="w-1.5 h-1.5 rounded-full bg-slate-300 mr-1"></span>ออฟไลน์
                </span>`

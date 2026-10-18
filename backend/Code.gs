@@ -748,7 +748,10 @@ function handleDeleteSite(token, siteId) {
 function handleLogRemoteAction(token, siteId, machineName, machineId, siteName) {
   const session = verifySessionToken(token);
   if (session) {
-    const detail = machineName ? "เปิดการเชื่อมต่อ Remote Desktop เครื่อง: " + machineName : "เปิดการเชื่อมต่อ Remote Desktop";
+    const sLabel = (siteName || "").trim();
+    const mLabel = (machineName || machineId || "").trim();
+    const combinedLabel = (sLabel && mLabel) ? `${sLabel}/${mLabel}` : (sLabel || mLabel);
+    const detail = combinedLabel ? "เปิดการเชื่อมต่อ Remote Desktop: " + combinedLabel : "เปิดการเชื่อมต่อ Remote Desktop";
     writeAuditLog(session.userId, "REMOTE_CONNECT", siteId, detail);
 
     touchUserPresence(session, {
