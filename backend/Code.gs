@@ -393,13 +393,13 @@ function handleLoginWithPin(username, pin) {
 
 function generateSessionToken(userId, role, username, displayName) {
   const expiresAt = new Date().getTime() + (8 * 60 * 60 * 1000); // 8 ชั่วโมง
-  const uName = (username || "").replace(/::/g, "_");
-  const dName = (displayName || "").replace(/::/g, "_");
+  const uName = encodeURIComponent((username || "").replace(/::/g, "_"));
+  const dName = encodeURIComponent((displayName || "").replace(/::/g, "_"));
   const payload = userId + "::" + role + "::" + expiresAt + "::" + uName + "::" + dName;
   const signature = Utilities.base64Encode(
-    Utilities.computeHmacSha256Signature(payload, SECRET_SALT)
+    Utilities.computeHmacSha256Signature(payload, SECRET_SALT, Utilities.Charset.UTF_8)
   );
-  return Utilities.base64Encode(payload) + "." + signature;
+  return Utilities.base64Encode(payload, Utilities.Charset.UTF_8) + "." + signature;
 }
 
 function verifySessionToken(token) {
@@ -408,19 +408,32 @@ function verifySessionToken(token) {
   if (parts.length !== 2) return null;
 
   try {
-    const payloadStr = Utilities.newBlob(Utilities.base64Decode(parts[0])).getDataAsString();
+    let payloadStr = "";
+    try {
+      payloadStr = Utilities.newBlob(Utilities.base64Decode(parts[0], Utilities.Charset.UTF_8)).getDataAsString("UTF-8");
+    } catch(e) {
+      payloadStr = Utilities.newBlob(Utilities.base64Decode(parts[0])).getDataAsString();
+    }
+
     const expectedSig = Utilities.base64Encode(
+      Utilities.computeHmacSha256Signature(payloadStr, SECRET_SALT, Utilities.Charset.UTF_8)
+    );
+    const fallbackSig = Utilities.base64Encode(
       Utilities.computeHmacSha256Signature(payloadStr, SECRET_SALT)
     );
 
-    if (parts[1] !== expectedSig) return null;
+    if (parts[1] !== expectedSig && parts[1] !== fallbackSig) return null;
 
     const segs = payloadStr.split("::");
     const userId = segs[0];
     const role = segs[1];
     const expiresAt = segs[2];
-    const username = segs[3] || "";
-    const displayName = segs[4] || "";
+
+    let username = segs[3] || "";
+    let displayName = segs[4] || "";
+
+    try { username = decodeURIComponent(username); } catch(e) {}
+    try { displayName = decodeURIComponent(displayName); } catch(e) {}
 
     if (new Date().getTime() > parseInt(expiresAt, 10)) {
       return null; // Token หมดอายุ
@@ -928,6 +941,12 @@ function handleSaveUser(token, userData) {
   // อัปเดตตาราง Permissions
   updateUserPermissions(ss, finalUserId, userData.allowed_sites, userData.role);
 
+  try {
+    const c = CacheService.getScriptCache();
+    c.remove("USER_INFO_" + String(finalUserId).trim());
+    c.remove("USER_INFO_" + String(userData.username).trim());
+  } catch(e) {}
+
   return { success: true, message: "บันทึกข้อมูลผู้ใช้และสิทธิ์เรียบร้อย", user_id: finalUserId };
 }
 
@@ -952,6 +971,12 @@ function handleDeleteUser(token, userId) {
 
       // ลบ permissions ของ user นี้
       cleanPermissionsForUser(ss, userId);
+
+      try {
+        const c = CacheService.getScriptCache();
+        c.remove("USER_INFO_" + String(userId).trim());
+        c.remove("USER_INFO_" + String(uName).trim());
+      } catch(e) {}
 
       writeAuditLog(session.userId, "USER_DELETE", "-", "ลบผู้ใช้: " + uName);
       return { success: true, message: "ลบผู้ใช้สำเร็จ" };
@@ -1412,24 +1437,38 @@ function testTelegramBotApi(botToken) {
 // Real-time Online Users Presence Management
 // --------------------------------------------------------------------
 
-const PRESENCE_CACHE_KEY = "ONLINE_USERS_MAP_V1";
+const PRESENCE_CACHE_KEY = "ONLINE_USERS_MAP_V2";
 const PRESENCE_TIMEOUT_MS = 2 * 60 * 1000;       // 2 นาที หากขาด heartbeat ถือว่า offline
 const REMOTE_ACTIVE_TIMEOUT_MS = 30 * 60 * 1000;  // 30 นาที สำหรับสถานะกำลังเชื่อมต่อเครื่อง
 
 function lookupUserById(userId) {
+  if (!userId) return null;
   try {
+    const cache = CacheService.getScriptCache();
+    const cacheKey = "USER_INFO_" + String(userId).trim();
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      try { return JSON.parse(cached); } catch(e) {}
+    }
+
     const ss = getSpreadsheet();
     const sheet = ss.getSheetByName("Users");
     if (!sheet) return null;
     const data = sheet.getDataRange().getValues();
+    const searchTarget = String(userId).trim().toLowerCase();
+
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0]).trim() === String(userId).trim()) {
-        return {
+      const rowId = String(data[i][0]).trim().toLowerCase();
+      const rowUser = String(data[i][1]).trim().toLowerCase();
+      if (rowId === searchTarget || rowUser === searchTarget) {
+        const u = {
           userId: data[i][0],
           username: data[i][1],
-          displayName: data[i][3],
-          role: data[i][4]
+          displayName: data[i][3] || data[i][1],
+          role: data[i][4] || "user"
         };
+        try { cache.put(cacheKey, JSON.stringify(u), 3600); } catch(e) {}
+        return u;
       }
     }
   } catch (e) {}
@@ -1456,18 +1495,12 @@ function touchUserPresence(session, activeRemote) {
     }
 
     let existing = map[uId] || {};
-    let uName = session.username || existing.username;
-    let dName = session.displayName || existing.displayName;
-    let role = session.role || existing.role;
 
-    if (!uName || !dName) {
-      const userObj = lookupUserById(uId);
-      if (userObj) {
-        uName = uName || userObj.username;
-        dName = dName || userObj.displayName;
-        role = role || userObj.role;
-      }
-    }
+    // ดึงข้อมูลผู้ใช้ที่แท้จริงจาก Users Sheet เสมอเพื่อป้องกันชื่อภาษาไทยเพี้ยน (Self-Healing)
+    let userObj = lookupUserById(uId) || lookupUserById(session.username);
+    let uName = (userObj && userObj.username) ? userObj.username : (session.username || existing.username || "User");
+    let dName = (userObj && userObj.displayName) ? userObj.displayName : (session.displayName || existing.displayName || uName);
+    let role = (userObj && userObj.role) ? userObj.role : (session.role || existing.role || "staff");
 
     // จัดการ activeRemote
     let remoteInfo = existing.activeRemote || null;
@@ -1481,9 +1514,9 @@ function touchUserPresence(session, activeRemote) {
 
     map[uId] = {
       userId: uId,
-      username: uName || "User",
-      displayName: dName || uName || "User",
-      role: role || "staff",
+      username: uName,
+      displayName: dName,
+      role: role,
       lastSeen: now,
       activeRemote: remoteInfo
     };

@@ -95,6 +95,23 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
+// ฟังก์ชันกู้คืนข้อความกรณีพบ Mojibake (Latin-1 UTF-8 byte decode)
+function fixMojibake(str) {
+  if (!str) return "";
+  const s = String(str);
+  // หากมีอักขระในช่วง Latin-1 Supplement ที่เกิดจากการแปลง UTF-8 bytes ผิดพลาด
+  if (/[\u00C0-\u00FF]/.test(s)) {
+    try {
+      const bytes = new Uint8Array([...s].map(c => c.charCodeAt(0) & 0xff));
+      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      return decoded;
+    } catch(e) {
+      return s;
+    }
+  }
+  return s;
+}
+
 // --------------------------------------------------------------------
 // UI Controllers & Rendering
 // --------------------------------------------------------------------
@@ -196,7 +213,7 @@ function showDashboardView() {
 
   const user = Auth.getUser();
   if (user) {
-    document.getElementById("user-display-name").textContent = user.displayName || user.username;
+    document.getElementById("user-display-name").textContent = fixMojibake(user.displayName || user.username);
     document.getElementById("user-role-badge").textContent = user.role === "admin" ? "Admin" : "User";
     
     // แสดง/ซ่อน เมนูเฉพาะ Admin
@@ -415,7 +432,7 @@ function renderSites() {
                   ${activeUser ? `
                     <div class="mb-2 flex items-center px-2 py-1 rounded-lg text-[11px] font-semibold bg-amber-100/90 text-amber-900 border border-amber-300">
                       <span class="w-2 h-2 rounded-full bg-amber-500 mr-1.5 animate-pulse"></span>
-                      <span class="truncate">👤 กำลังเชื่อมต่อ: ${escapeHtml(activeUser.display_name || activeUser.username)}</span>
+                      <span class="truncate">👤 กำลังเชื่อมต่อ: ${escapeHtml(fixMojibake(activeUser.display_name || activeUser.username))}</span>
                     </div>
                   ` : ''}
 
@@ -443,7 +460,7 @@ function renderSites() {
                 </div>
 
                 <!-- 1-Click Remote for this Machine -->
-                <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse mt-2.5 w-full py-1.5 px-3 bg-gradient-to-r ${activeUser ? 'from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700' : 'from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'} text-white text-xs font-semibold rounded-lg shadow-2xs active:scale-[0.98] transition-all flex items-center justify-center space-x-1.5" ${activeUser ? `title="มีผู้ใช้กำลังใช้งานเครื่องนี้ (${escapeHtml(activeUser.display_name || activeUser.username)}) คุณยังคงสามารถเชื่อมต่อได้"` : ''}>
+                <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse mt-2.5 w-full py-1.5 px-3 bg-gradient-to-r ${activeUser ? 'from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700' : 'from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'} text-white text-xs font-semibold rounded-lg shadow-2xs active:scale-[0.98] transition-all flex items-center justify-center space-x-1.5" ${activeUser ? `title="มีผู้ใช้กำลังใช้งานเครื่องนี้ (${escapeHtml(fixMojibake(activeUser.display_name || activeUser.username))}) คุณยังคงสามารถเชื่อมต่อได้"` : ''}>
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                   <span>Remote (${escapeHtml(m.machine_name)})</span>
                 </button>
@@ -508,7 +525,7 @@ function renderSites() {
                             ${activeUser ? `
                               <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-900 border border-amber-300">
                                 <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1 animate-pulse"></span>
-                                <span>👤 กำลังเชื่อมต่อ: ${escapeHtml(activeUser.display_name || activeUser.username)}</span>
+                                <span>👤 กำลังเชื่อมต่อ: ${escapeHtml(fixMojibake(activeUser.display_name || activeUser.username))}</span>
                               </span>
                             ` : ''}
                           </div>
@@ -524,7 +541,7 @@ function renderSites() {
                             </button>
                           </div>
                         </div>
-                        <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse inline-flex items-center px-3 py-1.5 ${activeUser ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-lg shadow-2xs whitespace-nowrap self-start sm:self-auto" ${activeUser ? `title="มีผู้ใช้กำลังใช้งานเครื่องนี้ (${escapeHtml(activeUser.display_name || activeUser.username)})"` : ''}>
+                        <button onclick="triggerRemote('${site.site_id}', '${m.machine_id}')" class="btn-remote-pulse inline-flex items-center px-3 py-1.5 ${activeUser ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white text-xs font-semibold rounded-lg shadow-2xs whitespace-nowrap self-start sm:self-auto" ${activeUser ? `title="มีผู้ใช้กำลังใช้งานเครื่องนี้ (${escapeHtml(fixMojibake(activeUser.display_name || activeUser.username))})"` : ''}>
                           <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                           Remote
                         </button>
@@ -562,8 +579,8 @@ function renderSites() {
 function formatActiveRemoteLabel(ar) {
   if (!ar) return "";
   const siteObj = (State.sites || []).find(s => String(s.site_id) === String(ar.siteId));
-  const sName = (ar.siteName || siteObj?.site_name || "").trim();
-  const mName = (ar.machineName || "").trim();
+  const sName = fixMojibake((ar.siteName || siteObj?.site_name || "").trim());
+  const mName = fixMojibake((ar.machineName || "").trim());
 
   if (sName && mName) {
     return sName.toLowerCase() === mName.toLowerCase() ? sName : `${sName}/${mName}`;
@@ -647,6 +664,9 @@ function renderOnlineUsersUI() {
         const roleLabel = u.role === "admin" ? "Admin" : "User";
         const roleClass = u.role === "admin" ? "bg-purple-100 text-purple-700 border-purple-200" : "bg-slate-100 text-slate-600 border-slate-200";
 
+        const rawDisplayName = fixMojibake(u.display_name || u.username || "");
+        const rawUsername = fixMojibake(u.username || "");
+
         let remoteBadge = "";
         if (u.active_remote) {
           const ar = u.active_remote;
@@ -663,21 +683,21 @@ function renderOnlineUsersUI() {
           <div class="p-2.5 hover:bg-slate-50 transition-colors flex items-start space-x-2.5 rounded-xl">
             <div class="relative shrink-0 mt-0.5">
               <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                ${escapeHtml((u.display_name || u.username || "U").charAt(0).toUpperCase())}
+                ${escapeHtml((rawDisplayName || rawUsername || "U").charAt(0).toUpperCase())}
               </div>
               <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></span>
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-semibold text-slate-800 truncate">
-                  ${escapeHtml(u.display_name || u.username)}
+                  ${escapeHtml(rawDisplayName)}
                   ${isSelf ? '<span class="text-[10px] text-blue-600 bg-blue-50 px-1 py-0.2 rounded font-normal ml-1">(คุณ)</span>' : ''}
                 </span>
                 <span class="text-[10px] px-1.5 py-0.2 rounded-full font-semibold border ${roleClass}">
                   ${roleLabel}
                 </span>
               </div>
-              <div class="text-[10px] text-slate-400 font-mono">@${escapeHtml(u.username)}</div>
+              <div class="text-[10px] text-slate-400 font-mono">@${escapeHtml(rawUsername)}</div>
               ${remoteBadge}
             </div>
           </div>
@@ -1097,10 +1117,10 @@ function renderUsersTable() {
           }
         </td>
         <td class="px-3 py-2.5 font-semibold text-slate-800 whitespace-nowrap">
-          ${escapeHtml(u.username)}
+          ${escapeHtml(fixMojibake(u.username))}
           ${isSelf ? '<span class="ml-1 text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-normal">(คุณ)</span>' : ''}
         </td>
-        <td class="px-3 py-2.5 text-slate-600 text-xs">${escapeHtml(u.display_name) || '-'}</td>
+        <td class="px-3 py-2.5 text-slate-600 text-xs">${escapeHtml(fixMojibake(u.display_name)) || '-'}</td>
         <td class="px-3 py-2.5 whitespace-nowrap">
           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-700'}">
             ${u.role}
@@ -1146,9 +1166,9 @@ function editUser(userId) {
   if (!user) return;
 
   State.editingUserId = userId;
-  document.getElementById("user-form-title").textContent = `✏️ แก้ไขผู้ใช้: ${user.username}`;
-  document.getElementById("user-form-username").value = user.username;
-  document.getElementById("user-form-display").value = user.display_name || "";
+  document.getElementById("user-form-title").textContent = `✏️ แก้ไขผู้ใช้: ${fixMojibake(user.username)}`;
+  document.getElementById("user-form-username").value = fixMojibake(user.username);
+  document.getElementById("user-form-display").value = fixMojibake(user.display_name || "");
   document.getElementById("user-form-role").value = user.role;
   document.getElementById("user-form-telegram").value = user.telegram_chat_id || "";
   document.getElementById("user-form-pass").value = "";
