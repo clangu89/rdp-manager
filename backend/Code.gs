@@ -542,7 +542,8 @@ function handleGetSites(token) {
           port: mPort,
           user: mUser,
           pass: mPass
-        })
+        }),
+        Utilities.Charset.UTF_8
       );
 
       return {

@@ -35,5 +35,16 @@ const CONFIG = {
 
   setConnectionMode: function(mode) {
     localStorage.setItem("rdp_connection_mode", mode);
+  },
+
+  // อนุญาต Copy-Paste ไฟล์และแชร์ไดรฟ์เข้าเครื่องรีโมต (ตัวเลือก A: ค่าเริ่มต้นเปิดใช้งาน = true)
+  getShareDrives: function() {
+    const val = localStorage.getItem("rdp_share_drives");
+    if (val === null) return true;
+    return val === "true";
+  },
+
+  setShareDrives: function(enabled) {
+    localStorage.setItem("rdp_share_drives", enabled ? "true" : "false");
   }
 };

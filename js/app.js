@@ -1428,6 +1428,8 @@ async function confirmDeleteGroup(groupId, groupName, siteCount) {
 async function openSettingsModal() {
   document.getElementById("setting-gas-url").value = CONFIG.getGasApiUrl();
   document.getElementById("setting-conn-mode").value = CONFIG.getConnectionMode();
+  const shareDrivesCheckbox = document.getElementById("setting-share-drives");
+  if (shareDrivesCheckbox) shareDrivesCheckbox.checked = CONFIG.getShareDrives();
   const testStatus = document.getElementById("telegram-test-status");
   if (testStatus) testStatus.textContent = "";
 
@@ -1451,10 +1453,13 @@ async function handleSaveSettings(e) {
   e.preventDefault();
   const url = document.getElementById("setting-gas-url").value.trim();
   const mode = document.getElementById("setting-conn-mode").value;
+  const shareDrivesCheckbox = document.getElementById("setting-share-drives");
+  const shareDrives = shareDrivesCheckbox ? shareDrivesCheckbox.checked : true;
   const botToken = document.getElementById("setting-telegram-token") ? document.getElementById("setting-telegram-token").value.trim() : "";
 
   CONFIG.setGasApiUrl(url);
   CONFIG.setConnectionMode(mode);
+  CONFIG.setShareDrives(shareDrives);
 
   if (Auth.isAdmin()) {
     try {
@@ -1512,8 +1517,30 @@ async function handleTestTelegramBot() {
   }
 }
 
-function openProtocolGuideModal() {
+function openProtocolGuideModal(defaultTab = "setup") {
+  switchProtocolModalTab(defaultTab);
   showModal("protocol-guide-modal");
+}
+
+function switchProtocolModalTab(tab) {
+  const tabSetup = document.getElementById("protocol-tab-setup");
+  const tabTrouble = document.getElementById("protocol-tab-troubleshoot");
+  const panelSetup = document.getElementById("protocol-panel-setup");
+  const panelTrouble = document.getElementById("protocol-panel-troubleshoot");
+
+  if (!tabSetup || !tabTrouble || !panelSetup || !panelTrouble) return;
+
+  if (tab === "troubleshoot") {
+    panelSetup.classList.add("hidden");
+    panelTrouble.classList.remove("hidden");
+    tabSetup.className = "px-3.5 py-2 text-xs font-bold rounded-t-xl border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all";
+    tabTrouble.className = "px-3.5 py-2 text-xs font-bold rounded-t-xl border-b-2 border-amber-600 text-amber-800 bg-white transition-all";
+  } else {
+    panelTrouble.classList.add("hidden");
+    panelSetup.classList.remove("hidden");
+    tabTrouble.className = "px-3.5 py-2 text-xs font-bold rounded-t-xl border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all";
+    tabSetup.className = "px-3.5 py-2 text-xs font-bold rounded-t-xl border-b-2 border-blue-600 text-blue-700 bg-white transition-all";
+  }
 }
 
 // --------------------------------------------------------------------
